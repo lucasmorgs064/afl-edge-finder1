@@ -1,0 +1,29 @@
+name: Auto-Fetch AFL Odds
+
+on:
+  schedule:
+    - cron: '0 4,7 * * 5,6' # Automatically runs Fri/Sat
+  workflow_dispatch: # Allows manual trigger anytime
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install pandas requests scipy
+      - name: Run Data Fetcher
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python fetch_data.py
+      - name: Commit and Push Updated Data
+        run: |
+          git config --global user.name 'AFL-Bot'
+          git config --global user.email 'bot@github.com'
+          git add latest_bets.csv
+          git commit -m "Auto-update pre-game value bets" || exit 0
+          git push
