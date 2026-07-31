@@ -144,7 +144,7 @@ def build_matchup_data(tips_df):
     return consensus_data
 
 # -------------------------------------------------------------------
-# Processing Engine (Restored Original Singles Rules)
+# Processing Engine (Unchanged Singles Processing)
 # -------------------------------------------------------------------
 def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60.0):
     rows = []
@@ -195,7 +195,6 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
 
                     market_implied_prob = 1.0 / price
                     
-                    # Sportsbet Formatting Rules
                     if mkt_name == "Player Disposals":
                         player = description if description else team_or_type
                         if point is not None:
@@ -235,7 +234,6 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
 
                     win_prob_pct = round(model_prob * 100, 1)
                     
-                    # Restored original $1.20 - $2.00 safe singles range
                     in_safe_range = (1.20 <= price <= 2.00)
 
                     if in_safe_range and win_prob_pct >= 65.0:
@@ -289,7 +287,7 @@ def are_legs_compatible(leg1, leg2):
     return True
 
 # -------------------------------------------------------------------
-# Anchor-Based High-Confidence SGM Generator ($1.80 - $2.20 Target)
+# Flexible SGM Generator (Fallback enabled for sparse API data)
 # -------------------------------------------------------------------
 def generate_realistic_multis(df, target_min_odds=1.75, target_max_odds=2.25):
     game_multis = []
@@ -297,16 +295,16 @@ def generate_realistic_multis(df, target_min_odds=1.75, target_max_odds=2.25):
         return game_multis
 
     for game_id, group in df.groupby("Game_ID"):
-        # Filter for heavy anchor legs ($1.05 - $1.42 odds, high AI probability)
+        # Step 1: Try strict low-odds anchors ($1.05 - $1.45)
         anchor_legs = group[
             (group["Odds_num"] >= 1.05) & 
-            (group["Odds_num"] <= 1.42) & 
-            (group["win_prob_num"] >= 70.0)
+            (group["Odds_num"] <= 1.45) & 
+            (group["win_prob_num"] >= 60.0)
         ].drop_duplicates(subset=["Selection"])
 
-        # Fall back to broader high-confidence selections if strictly bounded anchors are sparse
+        # Step 2: Fall back to top AI win prob selections if low-odds alternate lines are absent from API
         if len(anchor_legs) < 3:
-            anchor_legs = group[group["win_prob_num"] >= 65.0].drop_duplicates(subset=["Selection"])
+            anchor_legs = group[group["win_prob_num"] >= 55.0].drop_duplicates(subset=["Selection"])
 
         if len(anchor_legs) < 3:
             continue
@@ -314,7 +312,6 @@ def generate_realistic_multis(df, target_min_odds=1.75, target_max_odds=2.25):
         legs_list = anchor_legs.to_dict("records")
         all_valid_combos = []
 
-        # Evaluate 3-leg combinations built from high-safety anchors
         for i in range(len(legs_list)):
             for j in range(i + 1, len(legs_list)):
                 for k in range(j + 1, len(legs_list)):
@@ -327,13 +324,10 @@ def generate_realistic_multis(df, target_min_odds=1.75, target_max_odds=2.25):
                     comb_prob = (l1["win_prob_num"] / 100.0) * (l2["win_prob_num"] / 100.0) * (l3["win_prob_num"] / 100.0)
                     comb_prob_pct = round(comb_prob * 100, 1)
 
-                    # Heavily reward high combined AI win % and closeness to $1.95 midpoint
                     dist_from_target = abs(comb_odds - 1.95)
-                    
-                    # Apply penalty if odds go over $2.20 (keeping payout conservative & realistic)
-                    odds_penalty = (comb_odds - 2.20) * 40.0 if comb_odds > 2.20 else 0.0
+                    odds_penalty = (comb_odds - 2.30) * 30.0 if comb_odds > 2.30 else 0.0
 
-                    combo_score = (comb_prob_pct * 2.0) - (dist_from_target * 15.0) - odds_penalty
+                    combo_score = (comb_prob_pct * 2.0) - (dist_from_target * 12.0) - odds_penalty
 
                     all_valid_combos.append({
                         "Game": game_id,
@@ -350,7 +344,6 @@ def generate_realistic_multis(df, target_min_odds=1.75, target_max_odds=2.25):
                     })
 
         if all_valid_combos:
-            # Pick the single highest-scoring, safest multi for this fixture
             best_combo = max(all_valid_combos, key=lambda x: x["score"])
             game_multis.append(best_combo)
 
@@ -418,7 +411,7 @@ with tab_singles:
 
 with tab_multis:
     st.subheader("🏉 High-Confidence 3-Leg Same-Game Multis (~$1.80 - $2.20 Target Return)")
-    st.caption("Combines heavy anchor legs ($1.05–$1.42 odds) into high-probability SGMs:")
+    st.caption("Combines heavy anchor legs ($1.05–$1.45 odds) into high-probability SGMs:")
     
     multis = generate_realistic_multis(df, target_min_odds=1.75, target_max_odds=2.25)
     
