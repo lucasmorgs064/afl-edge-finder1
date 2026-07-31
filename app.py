@@ -45,7 +45,7 @@ def clean_team_name(name):
     return TEAM_MAP.get(str(name).strip(), str(name).strip())
 
 # -------------------------------------------------------------------
-# Data Fetching (Squiggle + The Odds API dual endpoints)
+# Data Fetching
 # -------------------------------------------------------------------
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_squiggle_tips(year=2026):
@@ -59,7 +59,6 @@ def fetch_squiggle_tips(year=2026):
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_sportsbet_odds(api_key: str, include_props=True):
-    # Endpoint 1: Fetch Featured Markets
     url = f"https://api.the-odds-api.com/v4/sports/{SPORT}/odds/"
     params = {
         "apiKey": api_key,
@@ -75,7 +74,6 @@ def fetch_sportsbet_odds(api_key: str, include_props=True):
     except requests.exceptions.RequestException as e:
         return None, str(e)
 
-    # Endpoint 2: Fetch Player Props event-by-event if selected
     if include_props and games:
         for game in games:
             event_id = game.get("id")
@@ -201,12 +199,14 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                         player = description if description else team_or_type
                         line_val = f" {point}+" if point else ""
                         target_desc = f"{player}{line_val} Disposals"
+                        team_assoc = home_clean if clean_target == home_clean else away_clean
                     elif point is not None:
                         target_desc = f"{team_or_type} ({'+' if point > 0 else ''}{point})"
+                        team_assoc = clean_target
                     else:
                         target_desc = team_or_type
+                        team_assoc = clean_target
                     
-                    # Sanity check: prevent unrealistic probability assignment on longshots
                     if mkt_key == "h2h":
                         if h_model_prob is not None:
                             raw_model_prob = h_model_prob if clean_target == home_clean else (1.0 - h_model_prob)
@@ -241,11 +241,14 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
 
                     rows.append({
                         "Game_ID": game_id,
+                        "home_team": home_clean,
+                        "away_team": away_clean,
                         "commence_dt": commence_dt,
                         "Kickoff": kickoff_str,
                         "Matchup": game_id,
                         "Market": mkt_name,
                         "Selection": target_desc,
+                        "team_assoc": team_assoc,
                         "Odds": f"${price:.2f}",
                         "Odds_num": price,
                         "AI Win Prob": f"{win_prob_pct}%",
@@ -258,15 +261,34 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
     return pd.DataFrame(rows)
 
 # -------------------------------------------------------------------
-# Robust 3-Leg SGM Generator (Guarantees $1.50+ payout)
+# Conflict Check Helper Function
 # -------------------------------------------------------------------
-def generate_realistic_multis(df, target_min_odds=1.50, target_max_odds=2.20):
+def are_legs_compatible(leg1, leg2):
+    # Rule 1: No H2H or Handicap conflict (cannot pick opposing teams)
+    if leg1["Market"] in ["Head to Head", "Win Margin / Handicap"] and leg2["Market"] in ["Head to Head", "Win Margin / Handicap"]:
+        if leg1["team_assoc"] != leg2["team_assoc"]:
+            return False
+
+    # Rule 2: No Totals conflict (cannot pick both Over and Under)
+    if leg1["Market"] == "Total Points / Goals" and leg2["Market"] == "Total Points / Goals":
+        if ("Over" in leg1["Selection"] and "Under" in leg2["Selection"]) or ("Under" in leg1["Selection"] and "Over" in leg2["Selection"]):
+            return False
+
+    # Rule 3: No duplicate selections
+    if leg1["Selection"] == leg2["Selection"]:
+        return False
+
+    return True
+
+# -------------------------------------------------------------------
+# Conflict-Free SGM Generator (~$2.00 Target Odds)
+# -------------------------------------------------------------------
+def generate_realistic_multis(df, target_min_odds=1.70, target_max_odds=2.40):
     game_multis = []
     if df.empty:
         return game_multis
 
     for game_id, group in df.groupby("Game_ID"):
-        # Sort available legs for this game by AI win probability (highest first) and lowest price
         sorted_legs = group.sort_values(
             by=["win_prob_num", "Odds_num"], ascending=[False, True]
         ).drop_duplicates(subset=["Selection"])
@@ -276,66 +298,53 @@ def generate_realistic_multis(df, target_min_odds=1.50, target_max_odds=2.20):
 
         legs_list = sorted_legs.to_dict("records")
         best_multi = None
+        closest_multi = None
+        closest_diff = 999.0
 
-        # Primary Search: Look for 3 high-confidence legs returning between $1.50 and $2.20
         for i in range(len(legs_list)):
             for j in range(i + 1, len(legs_list)):
                 for k in range(j + 1, len(legs_list)):
                     l1, l2, l3 = legs_list[i], legs_list[j], legs_list[k]
                     
+                    # Verify no conflicting outcomes
+                    if not (are_legs_compatible(l1, l2) and are_legs_compatible(l1, l3) and are_legs_compatible(l2, l3)):
+                        continue
+
                     comb_odds = l1["Odds_num"] * l2["Odds_num"] * l3["Odds_num"]
                     comb_prob = (l1["win_prob_num"] / 100.0) * (l2["win_prob_num"] / 100.0) * (l3["win_prob_num"] / 100.0)
                     comb_prob_pct = round(comb_prob * 100, 1)
 
-                    if target_min_odds <= comb_odds <= target_max_odds and comb_prob_pct >= 40.0:
-                        best_multi = {
-                            "Game": game_id,
-                            "Kickoff": l1["Kickoff"],
-                            "Combined Odds": f"${comb_odds:.2f}",
-                            "Est. Combined Win Prob": f"{comb_prob_pct}%",
-                            "Legs": [
-                                f"• **{l1['Selection']}** ({l1['Market']} @ ${l1['Odds_num']:.2f}) — *AI Win Prob: {l1['win_prob_num']}%*",
-                                f"• **{l2['Selection']}** ({l2['Market']} @ ${l2['Odds_num']:.2f}) — *AI Win Prob: {l2['win_prob_num']}%*",
-                                f"• **{l3['Selection']}** ({l3['Market']} @ ${l3['Odds_num']:.2f}) — *AI Win Prob: {l3['win_prob_num']}%*"
-                            ]
-                        }
+                    multi_payload = {
+                        "Game": game_id,
+                        "Kickoff": l1["Kickoff"],
+                        "Combined Odds": f"${comb_odds:.2f}",
+                        "Est. Combined Win Prob": f"{comb_prob_pct}%",
+                        "Legs": [
+                            f"• **{l1['Selection']}** ({l1['Market']} @ ${l1['Odds_num']:.2f}) — *AI Win Prob: {l1['win_prob_num']}%*",
+                            f"• **{l2['Selection']}** ({l2['Market']} @ ${l2['Odds_num']:.2f}) — *AI Win Prob: {l2['win_prob_num']}%*",
+                            f"• **{l3['Selection']}** ({l3['Market']} @ ${l3['Odds_num']:.2f}) — *AI Win Prob: {l3['win_prob_num']}%*"
+                        ]
+                    }
+
+                    # Target ideally between $1.70 and $2.40 (centered at ~$2.00)
+                    if target_min_odds <= comb_odds <= target_max_odds:
+                        best_multi = multi_payload
                         break
+
+                    # Track closest option near $2.00 if ideal range isn't hit
+                    diff = abs(comb_odds - 2.00)
+                    if diff < closest_diff and comb_odds >= 1.40:
+                        closest_diff = diff
+                        closest_multi = multi_payload
+
                 if best_multi:
                     break
             if best_multi:
                 break
 
-        # Fallback Search: Guarantee at least 1 SGM per match that pays $1.50+
-        if not best_multi and len(legs_list) >= 3:
-            # Search for any 3 top-ranked legs that reach at least $1.50 total price
-            found_fallback = False
-            for i in range(min(5, len(legs_list))):
-                for j in range(i + 1, len(legs_list)):
-                    for k in range(j + 1, len(legs_list)):
-                        l1, l2, l3 = legs_list[i], legs_list[j], legs_list[k]
-                        comb_odds = l1["Odds_num"] * l2["Odds_num"] * l3["Odds_num"]
-                        if comb_odds >= 1.50:
-                            comb_prob = (l1["win_prob_num"] / 100.0) * (l2["win_prob_num"] / 100.0) * (l3["win_prob_num"] / 100.0)
-                            best_multi = {
-                                "Game": game_id,
-                                "Kickoff": l1["Kickoff"],
-                                "Combined Odds": f"${comb_odds:.2f}",
-                                "Est. Combined Win Prob": f"{round(comb_prob * 100, 1)}%",
-                                "Legs": [
-                                    f"• **{l1['Selection']}** ({l1['Market']} @ ${l1['Odds_num']:.2f}) — *AI Win Prob: {l1['win_prob_num']}%*",
-                                    f"• **{l2['Selection']}** ({l2['Market']} @ ${l2['Odds_num']:.2f}) — *AI Win Prob: {l2['win_prob_num']}%*",
-                                    f"• **{l3['Selection']}** ({l3['Market']} @ ${l3['Odds_num']:.2f}) — *AI Win Prob: {l3['win_prob_num']}%*"
-                                ]
-                            }
-                            found_fallback = True
-                            break
-                    if found_fallback:
-                        break
-                if found_fallback:
-                    break
-
-        if best_multi:
-            game_multis.append(best_multi)
+        selected = best_multi if best_multi else closest_multi
+        if selected:
+            game_multis.append(selected)
 
     return game_multis
 
@@ -400,17 +409,17 @@ with tab_singles:
             st.dataframe(display_closest, use_container_width=True)
 
 with tab_multis:
-    st.subheader("🏉 High-Confidence 3-Leg Same-Game Multis ($1.50+ Combined Payout)")
-    st.caption("Constructed using the safest available anchor legs to guarantee a minimum $1.50 total payout:")
+    st.subheader("🏉 High-Confidence 3-Leg Same-Game Multis (~$2.00 Target Return)")
+    st.caption("Combines non-conflicting markets across Disposals, Head-to-Head, Margin, and Totals targeting ~$2.00 total payout:")
     
-    multis = generate_realistic_multis(df, target_min_odds=1.50, target_max_odds=2.20)
+    multis = generate_realistic_multis(df, target_min_odds=1.70, target_max_odds=2.40)
     
     if multis:
         for multi in multis:
             with st.expander(f"📍 **{multi['Game']}** ({multi['Kickoff']}) — Combined Price: **{multi['Combined Odds']}**"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.write("**Recommended Anchor Legs:**")
+                    st.write("**Compatible 3-Leg Selection:**")
                     for leg in multi["Legs"]:
                         st.markdown(leg)
                 with col2:
