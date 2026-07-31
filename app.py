@@ -288,7 +288,7 @@ def are_legs_compatible(leg1, leg2):
     return True
 
 # -------------------------------------------------------------------
-# Flexible 2-5 Leg SGM Generator Strictly Capped at ~$2.00 Odds
+# Universal SGM Generator (Guarantees 1 SGM per Game with Natural Variety)
 # -------------------------------------------------------------------
 def generate_realistic_multis(df, target_min_odds=1.65, target_max_odds=2.35):
     game_multis = []
@@ -296,42 +296,33 @@ def generate_realistic_multis(df, target_min_odds=1.65, target_max_odds=2.35):
         return game_multis
 
     for game_id, group in df.groupby("Game_ID"):
-        # Select safe candidate legs (odds between $1.04 and $1.55)
+        # Primary anchor leg selection ($1.04 - $1.60 odds)
         candidate_legs = group[
             (group["Odds_num"] >= 1.04) & 
-            (group["Odds_num"] <= 1.55) & 
-            (group["win_prob_num"] >= 55.0)
+            (group["Odds_num"] <= 1.60)
         ].drop_duplicates(subset=["Selection"])
 
+        # Fallback 1: Expand candidate odds window if options are limited
         if len(candidate_legs) < 2:
-            candidate_legs = group[group["win_prob_num"] >= 50.0].drop_duplicates(subset=["Selection"])
+            candidate_legs = group[
+                (group["Odds_num"] >= 1.02) & 
+                (group["Odds_num"] <= 1.80)
+            ].drop_duplicates(subset=["Selection"])
+
+        # Fallback 2: Take top options across all available selections
+        if len(candidate_legs) < 2:
+            candidate_legs = group.sort_values("win_prob_num", ascending=False).drop_duplicates(subset=["Selection"])
 
         if len(candidate_legs) < 2:
             continue
 
         legs_list = candidate_legs.to_dict("records")
-
-        # Scoring helper to prioritize Handicap/Margin & 15/20/25 milestone disposals
-        def get_preference_boost(leg):
-            mkt = leg.get("Market", "")
-            sel = leg.get("Selection", "")
-            boost = 0
-            if "Handicap" in mkt or "Margin" in mkt:
-                boost += 15
-            if "Disposals" in mkt:
-                boost += 10
-                if any(m in sel for m in ["15+", "20+", "25+", "30+"]):
-                    boost += 10
-            return boost
-
-        legs_list.sort(key=lambda x: (get_preference_boost(x), x["win_prob_num"]), reverse=True)
-
         all_valid_combos = []
 
-        # Evaluate 2, 3, 4, and 5-leg combinations
+        # Evaluate 2, 3, 4, and 5-leg combinations naturally
         for k_legs in range(2, min(6, len(legs_list) + 1)):
             for combo in itertools.combinations(legs_list, k_legs):
-                # Verify mutual compatibility across all legs in the multi
+                # Verify mutual compatibility
                 compatible = True
                 for i_idx in range(len(combo)):
                     for j_idx in range(i_idx + 1, len(combo)):
@@ -346,21 +337,21 @@ def generate_realistic_multis(df, target_min_odds=1.65, target_max_odds=2.35):
 
                 comb_odds = 1.0
                 comb_prob = 1.0
-                pref_score = 0
                 for leg in combo:
                     comb_odds *= leg["Odds_num"]
                     comb_prob *= (leg["win_prob_num"] / 100.0)
-                    pref_score += get_preference_boost(leg)
-
-                # STRICT HARD BOUNDARY: Reject anything paying over $2.35 or under $1.65
-                if not (target_min_odds <= comb_odds <= target_max_odds):
-                    continue
 
                 comb_prob_pct = round(comb_prob * 100, 1)
                 dist_from_target = abs(comb_odds - 2.00)
 
-                # Score penalizes distance from $2.00 target and rewards probability & preferred legs
-                combo_score = (comb_prob_pct * 3.0) + (pref_score * 2.0) - (dist_from_target * 30.0)
+                # Secondary penalty only if odds drift far outside target
+                odds_penalty = 0.0
+                if comb_odds < target_min_odds:
+                    odds_penalty = (target_min_odds - comb_odds) * 25.0
+                elif comb_odds > target_max_odds:
+                    odds_penalty = (comb_odds - target_max_odds) * 25.0
+
+                combo_score = (comb_prob_pct * 2.5) - (dist_from_target * 20.0) - odds_penalty
 
                 formatted_legs = [
                     f"• **{leg['Selection']}** ({leg['Market']} @ ${leg['Odds_num']:.2f}) — *AI Win Prob: {leg['win_prob_num']}%*"
@@ -374,13 +365,21 @@ def generate_realistic_multis(df, target_min_odds=1.65, target_max_odds=2.35):
                     "Combined Odds": f"${comb_odds:.2f}",
                     "comb_odds_num": comb_odds,
                     "Est. Combined Win Prob": f"{comb_prob_pct}%",
+                    "dist_from_target": dist_from_target,
                     "score": combo_score,
                     "Legs": formatted_legs
                 })
 
         if all_valid_combos:
-            # Select the top-performing multi closest to ~$2.00 for this game
-            best_combo = max(all_valid_combos, key=lambda x: x["score"])
+            # First filter for combos strictly inside target range ($1.65 - $2.35)
+            in_range_combos = [c for c in all_valid_combos if target_min_odds <= c["comb_odds_num"] <= target_max_odds]
+            
+            if in_range_combos:
+                best_combo = max(in_range_combos, key=lambda x: x["score"])
+            else:
+                # Guaranteed Fallback: pick the combo closest to $2.00 target
+                best_combo = min(all_valid_combos, key=lambda x: x["dist_from_target"])
+
             game_multis.append(best_combo)
 
     return game_multis
@@ -446,8 +445,8 @@ with tab_singles:
             st.dataframe(display_closest, use_container_width=True)
 
 with tab_multis:
-    st.subheader("🏉 High-Confidence Same-Game Multis (~$2.00 Total Odds Target)")
-    st.caption("Combines 2 to 5 safe anchor legs (focusing on Handicaps & 15/20/25 Disposal milestones) strictly bounded around $1.65 – $2.35 odds.")
+    st.subheader("🏉 Recommended Same-Game Multi for Every Game (~$2.00 Target Return)")
+    st.caption("1 custom multi per fixture using flexible 2–5 legs targeted at $1.65 – $2.35 odds.")
     
     multis = generate_realistic_multis(df, target_min_odds=1.65, target_max_odds=2.35)
     
@@ -456,11 +455,11 @@ with tab_multis:
             with st.expander(f"📍 **{multi['Game']}** ({multi['Kickoff']}) — {multi['Leg Count']} @ **{multi['Combined Odds']}**"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.write("**Selected Legs:**")
+                    st.write("**Recommended SGM Legs:**")
                     for leg in multi["Legs"]:
                         st.markdown(leg)
                 with col2:
-                    st.metric("Total Multi Odds", multi["Combined Odds"])
+                    st.metric("Total Multi Price", multi["Combined Odds"])
                     st.metric("Est. Combined Model Win Prob", multi["Est. Combined Win Prob"])
     else:
-        st.info("No multis currently match the strict ~$2.00 odds window for the available game markets.")
+        st.info("No games available in current odds feed.")
