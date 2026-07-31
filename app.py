@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 # Page Configuration
-st.set_page_config(page_title="AFL High-Confidence SGM Finder", page_icon="🏉", layout="wide")
+st.set_page_config(page_title="AFL Safe Bet & Realistic SGM Finder", page_icon="🏉", layout="wide")
 
 # -------------------------------------------------------------------
 # Configuration & API Setup
@@ -144,7 +144,7 @@ def build_matchup_data(tips_df):
     return consensus_data
 
 # -------------------------------------------------------------------
-# Processing Engine (Sportsbet-Style Clean Labels)
+# Processing Engine (Restored Original Singles Rules)
 # -------------------------------------------------------------------
 def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60.0):
     rows = []
@@ -195,18 +195,19 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
 
                     market_implied_prob = 1.0 / price
                     
-                    # Formatting logic for clean Sportsbet look
+                    # Sportsbet Formatting Rules
                     if mkt_name == "Player Disposals":
                         player = description if description else team_or_type
                         if point is not None:
                             val = int(point) if float(point).is_integer() else point
-                            target_desc = f"{player} {val}+ Disposals"
+                            prefix = "Over " if "Over" in team_or_type or "Over" in description else ("Under " if "Under" in team_or_type or "Under" in description else "")
+                            target_desc = f"{player} {val}+ Disposals" if float(point).is_integer() else f"{player} {prefix}{point} Disposals"
                         else:
                             target_desc = f"{player} Disposals"
                         team_assoc = player
                     elif mkt_name == "Total Points / Goals":
-                        prefix = "Over" if "Over" in team_or_type else ("Under" if "Under" in team_or_type else team_or_type)
-                        target_desc = f"{prefix} {point} Total Points" if point else team_or_type
+                        prefix = "Over " if "Over" in team_or_type else ("Under " if "Under" in team_or_type else "")
+                        target_desc = f"{prefix}{point} Total Points" if point else team_or_type
                         team_assoc = "Game Total"
                     elif point is not None:
                         target_desc = f"{team_or_type} ({'+' if point > 0 else ''}{point})"
@@ -218,7 +219,7 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                     if mkt_key == "h2h":
                         if h_model_prob is not None:
                             raw_model_prob = h_model_prob if clean_target == home_clean else (1.0 - h_model_prob)
-                            model_prob = min(raw_model_prob, market_implied_prob * 1.20)
+                            model_prob = min(raw_model_prob, market_implied_prob * 1.25)
                         else:
                             model_prob = market_implied_prob
                     elif mkt_key == "spreads":
@@ -228,15 +229,17 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                         else:
                             model_prob = market_implied_prob
                     elif mkt_name == "Player Disposals":
-                        model_prob = min(market_implied_prob * 1.05, 0.94)
+                        model_prob = min(market_implied_prob * 1.05, 0.92)
                     else:
                         model_prob = market_implied_prob
 
                     win_prob_pct = round(model_prob * 100, 1)
-                    in_safe_range = (1.10 <= price <= 1.85)
+                    
+                    # Restored original $1.20 - $2.00 safe singles range
+                    in_safe_range = (1.20 <= price <= 2.00)
 
-                    if in_safe_range and win_prob_pct >= 70.0:
-                        rec_rating = "⭐⭐⭐ HIGH CONFIDENCE ANCHOR"
+                    if in_safe_range and win_prob_pct >= 65.0:
+                        rec_rating = "⭐⭐⭐ HIGH CONFIDENCE"
                         is_match = True
                     elif in_safe_range and win_prob_pct >= min_win_prob:
                         rec_rating = "⭐⭐ GOOD VALUE"
@@ -245,7 +248,7 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                         rec_rating = "⭐ LEAN / NEAR MISS"
                         is_match = False
 
-                    score = win_prob_pct - (abs(price - 1.35) * 10)
+                    score = win_prob_pct - (abs(price - 1.50) * 10)
 
                     rows.append({
                         "Game_ID": game_id,
@@ -286,26 +289,32 @@ def are_legs_compatible(leg1, leg2):
     return True
 
 # -------------------------------------------------------------------
-# High-Confidence SGM Generator (Hard Odds Ceiling: ~$2.05 Max)
+# Anchor-Based High-Confidence SGM Generator ($1.80 - $2.20 Target)
 # -------------------------------------------------------------------
-def generate_realistic_multis(df, target_min_odds=1.50, target_max_odds=2.05):
+def generate_realistic_multis(df, target_min_odds=1.75, target_max_odds=2.25):
     game_multis = []
     if df.empty:
         return game_multis
 
     for game_id, group in df.groupby("Game_ID"):
-        # Filter for highest AI confidence legs first
-        candidate_legs = group[group["win_prob_num"] >= 60.0].drop_duplicates(subset=["Selection"])
+        # Filter for heavy anchor legs ($1.05 - $1.42 odds, high AI probability)
+        anchor_legs = group[
+            (group["Odds_num"] >= 1.05) & 
+            (group["Odds_num"] <= 1.42) & 
+            (group["win_prob_num"] >= 70.0)
+        ].drop_duplicates(subset=["Selection"])
 
-        if len(candidate_legs) < 3:
-            candidate_legs = group.drop_duplicates(subset=["Selection"])
+        # Fall back to broader high-confidence selections if strictly bounded anchors are sparse
+        if len(anchor_legs) < 3:
+            anchor_legs = group[group["win_prob_num"] >= 65.0].drop_duplicates(subset=["Selection"])
 
-        if len(candidate_legs) < 3:
+        if len(anchor_legs) < 3:
             continue
 
-        legs_list = candidate_legs.to_dict("records")
+        legs_list = anchor_legs.to_dict("records")
         all_valid_combos = []
 
+        # Evaluate 3-leg combinations built from high-safety anchors
         for i in range(len(legs_list)):
             for j in range(i + 1, len(legs_list)):
                 for k in range(j + 1, len(legs_list)):
@@ -318,15 +327,13 @@ def generate_realistic_multis(df, target_min_odds=1.50, target_max_odds=2.05):
                     comb_prob = (l1["win_prob_num"] / 100.0) * (l2["win_prob_num"] / 100.0) * (l3["win_prob_num"] / 100.0)
                     comb_prob_pct = round(comb_prob * 100, 1)
 
-                    # Scoring logic: heavily favor maximum combined probability, strictly penalize odds > $2.05
-                    if comb_odds > 2.05:
-                        odds_penalty = (comb_odds - 2.05) * 50.0
-                    elif comb_odds < 1.50:
-                        odds_penalty = (1.50 - comb_odds) * 20.0
-                    else:
-                        odds_penalty = 0.0
+                    # Heavily reward high combined AI win % and closeness to $1.95 midpoint
+                    dist_from_target = abs(comb_odds - 1.95)
+                    
+                    # Apply penalty if odds go over $2.20 (keeping payout conservative & realistic)
+                    odds_penalty = (comb_odds - 2.20) * 40.0 if comb_odds > 2.20 else 0.0
 
-                    combo_score = (comb_prob_pct * 1.5) - odds_penalty
+                    combo_score = (comb_prob_pct * 2.0) - (dist_from_target * 15.0) - odds_penalty
 
                     all_valid_combos.append({
                         "Game": game_id,
@@ -343,6 +350,7 @@ def generate_realistic_multis(df, target_min_odds=1.50, target_max_odds=2.05):
                     })
 
         if all_valid_combos:
+            # Pick the single highest-scoring, safest multi for this fixture
             best_combo = max(all_valid_combos, key=lambda x: x["score"])
             game_multis.append(best_combo)
 
@@ -351,8 +359,8 @@ def generate_realistic_multis(df, target_min_odds=1.50, target_max_odds=2.05):
 # -------------------------------------------------------------------
 # Dashboard Interface
 # -------------------------------------------------------------------
-st.title("🎯 AFL High-Confidence Bet & SGM Finder")
-st.caption("Maximized for win rate & safety. Stacks heavy anchor legs targeting a ~$1.70 - $2.05 combined return.")
+st.title("🎯 AFL Safe Bet & Realistic SGM Finder")
+st.caption("Analyzes Sportsbet odds & Squiggle AI models to identify high-probability singles and realistic 3-leg SGMs.")
 
 st.sidebar.header("⚙️ Controls")
 
@@ -371,7 +379,7 @@ selected_markets = st.sidebar.multiselect(
 
 min_win_prob = st.sidebar.slider(
     "Min AI Win Prob (%)", 
-    min_value=50, max_value=85, value=65, step=5
+    min_value=50, max_value=80, value=60, step=5
 )
 
 st.sidebar.markdown("---")
@@ -392,34 +400,34 @@ if not odds_raw:
 
 df = process_sportsbet_odds(odds_raw, tips_df, selected_markets=selected_markets, min_win_prob=min_win_prob)
 
-tab_singles, tab_multis = st.tabs(["📊 High-Confidence Singles ($1.20–$1.85)", "🔥 High-Confidence 3-Leg SGMs (Max ~$2.05)"])
+tab_singles, tab_multis = st.tabs(["📊 High-Confidence Singles ($1.20–$2.00)", "🔥 High-Confidence 3-Leg SGMs ($1.80–$2.20)"])
 
 with tab_singles:
     if not df.empty:
         strict_df = df[df["is_match"]].sort_values(by=["commence_dt", "win_prob_num"], ascending=[True, False])
         if not strict_df.empty:
-            st.success(f" Found {len(strict_df)} High-Confidence Single Bet(s)!")
+            st.success(f" Found {len(strict_df)} High-Confidence Single Bet(s) in the $1.20 - $2.00 range!")
             display_df = strict_df[["Kickoff", "Matchup", "Market", "Selection", "Odds", "AI Win Prob", "Recommendation"]]
             st.dataframe(display_df, use_container_width=True)
         else:
-            st.info("💡 No single bets currently match all strict target criteria.")
+            st.info("💡 No single bets currently match all strict target criteria ($1.20–$2.00 odds + high AI win probability).")
             st.subheader("🔍 Closest Single Bet Candidates")
             closest_df = df.sort_values(by=["score", "win_prob_num"], ascending=[False, False]).head(5)
             display_closest = closest_df[["Kickoff", "Matchup", "Market", "Selection", "Odds", "AI Win Prob", "Recommendation"]]
             st.dataframe(display_closest, use_container_width=True)
 
 with tab_multis:
-    st.subheader("🏉 Ultra-Safe 3-Leg Same-Game Multis ($1.50 - $2.05 Max Payout)")
-    st.caption("Prioritizes maximum AI confidence and hit rate across any combination of compatible markets:")
+    st.subheader("🏉 High-Confidence 3-Leg Same-Game Multis (~$1.80 - $2.20 Target Return)")
+    st.caption("Combines heavy anchor legs ($1.05–$1.42 odds) into high-probability SGMs:")
     
-    multis = generate_realistic_multis(df, target_min_odds=1.50, target_max_odds=2.05)
+    multis = generate_realistic_multis(df, target_min_odds=1.75, target_max_odds=2.25)
     
     if multis:
         for multi in multis:
-            with st.expander(f"📍 **{multi['Game']}** ({multi['Kickoff']}) — Price: **{multi['Combined Odds']}**"):
+            with st.expander(f"📍 **{multi['Game']}** ({multi['Kickoff']}) — Combined Price: **{multi['Combined Odds']}**"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.write("**Safest Combined Anchor Legs:**")
+                    st.write("**Top AI Confidence Anchor Legs:**")
                     for leg in multi["Legs"]:
                         st.markdown(leg)
                 with col2:
