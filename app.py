@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 # Page Configuration
-st.set_page_config(page_title="AFL Safe Bet & SGM Engine", page_icon="🏉", layout="wide")
+st.set_page_config(page_title="AFL Safe Bet & Realistic SGM Finder", page_icon="🏉", layout="wide")
 
 # -------------------------------------------------------------------
 # Configuration & API Setup
@@ -12,7 +12,8 @@ st.set_page_config(page_title="AFL Safe Bet & SGM Engine", page_icon="🏉", lay
 API_KEY = st.secrets.get("ODDS_API_KEY", os.environ.get("ODDS_API_KEY", "f9366aa6d54b45008ab1df1b44634266"))
 SPORT = "aussierules_afl"
 REGIONS = "au"
-MARKETS = "h2h,spreads,totals,player_disposals"
+# Featured markets only to avoid 422 Unprocessable Entity on standard odds endpoint
+MARKETS = "h2h,spreads,totals"
 TARGET_BOOKMAKER = "sportsbet"
 
 SQUIGGLE_HEADERS = {"User-Agent": "AFL Safe Bet Analytics - student@college.edu"}
@@ -113,7 +114,7 @@ def build_matchup_data(tips_df):
     return consensus_data
 
 # -------------------------------------------------------------------
-# Processing Engine with Realistic Probability Guardrails
+# Processing Engine with Realistic Probability Caps
 # -------------------------------------------------------------------
 def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60.0):
     rows = []
@@ -144,8 +145,6 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                     mkt_name = "Win Margin / Handicap"
                 elif mkt_key == "totals":
                     mkt_name = "Total Points / Goals"
-                elif "player_disposals" in mkt_key:
-                    mkt_name = "Player Disposals"
                 else:
                     mkt_name = mkt_key.replace("_", " ").title()
 
@@ -157,7 +156,6 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                     clean_target = clean_team_name(team_or_type)
                     price = float(outcome.get("price", 1.0))
                     point = outcome.get("point", None)
-                    description = outcome.get("description", "")
                     
                     if price <= 1.0:
                         continue
@@ -165,20 +163,16 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                     # Market Implied Probability (1 / Price)
                     market_implied_prob = 1.0 / price
                     
-                    if mkt_name == "Player Disposals":
-                        player = description if description else team_or_type
-                        line_val = f" {point}+" if point else ""
-                        target_desc = f"{player}{line_val} Disposals"
-                    elif point is not None:
+                    if point is not None:
                         target_desc = f"{team_or_type} ({'+' if point > 0 else ''}{point})"
                     else:
                         target_desc = team_or_type
                     
-                    # Model Probability Calculation with Strict Implied Sanity Check
+                    # Model Probability Calculation bounded by Market Sanity Check
                     if mkt_key == "h2h":
                         if h_model_prob is not None:
                             raw_model_prob = h_model_prob if clean_target == home_clean else (1.0 - h_model_prob)
-                            # Sanity check: do not allow model prob to diverge wildly from market odds for huge underdogs
+                            # Sanity check: Prevents longshots ($15 underdogs) from getting high probabilities
                             model_prob = min(raw_model_prob, market_implied_prob * 1.25)
                         else:
                             model_prob = market_implied_prob
@@ -188,8 +182,6 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                             model_prob = min(max(0.50 + (margin_diff * 0.015), 0.10), 0.90)
                         else:
                             model_prob = market_implied_prob
-                    elif mkt_name == "Player Disposals":
-                        model_prob = min(market_implied_prob * 1.05, 0.92)
                     else:
                         model_prob = market_implied_prob
 
@@ -227,7 +219,7 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
     return pd.DataFrame(rows)
 
 # -------------------------------------------------------------------
-# Strict Realistic 3-Leg SGM Generator (Anchor Legs $1.08–$1.45 Only)
+# Strict Realistic 3-Leg SGM Generator (Anchor Legs $1.08–$1.45)
 # -------------------------------------------------------------------
 def generate_realistic_multis(df, target_min_odds=1.80, target_max_odds=2.15):
     game_multis = []
@@ -235,22 +227,22 @@ def generate_realistic_multis(df, target_min_odds=1.80, target_max_odds=2.15):
         return game_multis
 
     for game_id, group in df.groupby("Game_ID"):
-        # FILTER 1: Only allow heavy anchor favorite legs ($1.08 to $1.45 odds) with high AI win prob
+        # Filter for heavy favorite anchor legs ($1.08 to $1.45)
         safe_anchor_legs = group[
             (group["Odds_num"] >= 1.08) & 
             (group["Odds_num"] <= 1.45) & 
-            (group["win_prob_num"] >= 68.0)
+            (group["win_prob_num"] >= 65.0)
         ].sort_values(by=["win_prob_num", "Odds_num"], ascending=[False, True])
         
         safe_anchor_legs = safe_anchor_legs.drop_duplicates(subset=["Selection"])
 
         if len(safe_anchor_legs) < 3:
-            continue  # Skip if match doesn't have 3 genuinely safe heavy favorite legs
+            continue
 
         legs_list = safe_anchor_legs.to_dict("records")
         best_multi = None
 
-        # FILTER 2: Find a 3-leg combination whose combined product sits in $1.80 - $2.15
+        # Look for 3-leg combinations targeting combined odds of $1.80 to $2.15
         for i in range(len(legs_list)):
             for j in range(i + 1, len(legs_list)):
                 for k in range(j + 1, len(legs_list)):
@@ -278,23 +270,6 @@ def generate_realistic_multis(df, target_min_odds=1.80, target_max_odds=2.15):
             if best_multi:
                 break
 
-        # Fallback: If no exact $1.80–$2.15 match, pick top 3 highest probability heavy favorite legs
-        if not best_multi and len(legs_list) >= 3:
-            l1, l2, l3 = legs_list[0], legs_list[1], legs_list[2]
-            comb_odds = l1["Odds_num"] * l2["Odds_num"] * l3["Odds_num"]
-            comb_prob = (l1["win_prob_num"] / 100.0) * (l2["win_prob_num"] / 100.0) * (l3["win_prob_num"] / 100.0)
-            best_multi = {
-                "Game": game_id,
-                "Kickoff": l1["Kickoff"],
-                "Combined Odds": f"${comb_odds:.2f}",
-                "Est. Combined Win Prob": f"{round(comb_prob * 100, 1)}%",
-                "Legs": [
-                    f"• **{l1['Selection']}** ({l1['Market']} @ ${l1['Odds_num']:.2f}) — *AI Win Prob: {l1['win_prob_num']}%*",
-                    f"• **{l2['Selection']}** ({l2['Market']} @ ${l2['Odds_num']:.2f}) — *AI Win Prob: {l2['win_prob_num']}%*",
-                    f"• **{l3['Selection']}** ({l3['Market']} @ ${l3['Odds_num']:.2f}) — *AI Win Prob: {l3['win_prob_num']}%*"
-                ]
-            }
-
         if best_multi:
             game_multis.append(best_multi)
 
@@ -304,7 +279,7 @@ def generate_realistic_multis(df, target_min_odds=1.80, target_max_odds=2.15):
 # Dashboard Interface
 # -------------------------------------------------------------------
 st.title("🎯 AFL Safe Bet & Realistic SGM Finder")
-st.caption("Filters Sportsbet & Squiggle data to identify high-probability single bets and realistic 3-leg SGMs.")
+st.caption("Analyzes Sportsbet & Squiggle AI models to find high-probability singles and realistic 3-leg SGMs.")
 
 st.sidebar.header("⚙️ Controls")
 
@@ -314,7 +289,7 @@ if st.sidebar.button("🔄 Refresh Data"):
 
 st.sidebar.markdown("---")
 
-available_markets = ["Head to Head", "Win Margin / Handicap", "Total Points / Goals", "Player Disposals"]
+available_markets = ["Head to Head", "Win Margin / Handicap", "Total Points / Goals"]
 selected_markets = st.sidebar.multiselect(
     "Active Betting Markets",
     options=available_markets,
