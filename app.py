@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 # Page Configuration
-st.set_page_config(page_title="AFL Sportsbet +EV Dashboard", page_icon="🏉", layout="wide")
+st.set_page_config(page_title="AFL High-Confidence Bet Finder", page_icon="🏉", layout="wide")
 
 # -------------------------------------------------------------------
 # Configuration & API Setup
@@ -12,10 +12,10 @@ st.set_page_config(page_title="AFL Sportsbet +EV Dashboard", page_icon="🏉", l
 API_KEY = st.secrets.get("ODDS_API_KEY", os.environ.get("ODDS_API_KEY", "f9366aa6d54b45008ab1df1b44634266"))
 SPORT = "aussierules_afl"
 REGIONS = "au"
-MARKETS = "h2h,spreads,totals"
+MARKETS = "h2h,spreads"
 TARGET_BOOKMAKER = "sportsbet"
 
-SQUIGGLE_HEADERS = {"User-Agent": "AFL Analytics Dashboard - student@college.edu"}
+SQUIGGLE_HEADERS = {"User-Agent": "AFL Safe Bet Analytics - student@college.edu"}
 
 # Canonical AFL Team Names Mapping
 TEAM_MAP = {
@@ -40,7 +40,6 @@ TEAM_MAP = {
 }
 
 def clean_team_name(name):
-    """Normalizes team names to match Squiggle API conventions."""
     if not name:
         return name
     return TEAM_MAP.get(str(name).strip(), str(name).strip())
@@ -76,18 +75,13 @@ def fetch_sportsbet_odds(api_key: str):
         return None, str(e)
 
 # -------------------------------------------------------------------
-# Matchup Probability Builder
+# Matchup Probability Engine
 # -------------------------------------------------------------------
 def build_matchup_probabilities(tips_df):
-    """
-    Groups Squiggle tips by upcoming Matchup (Home vs Away) 
-    and averages hprop across all prediction models.
-    """
     matchup_probs = {}
     if tips_df.empty or "hprop" not in tips_df.columns:
         return matchup_probs
 
-    # Filter for valid numeric hprop values
     tips_df["hprop_num"] = pd.to_numeric(tips_df["hprop"], errors="coerce")
     valid_tips = tips_df.dropna(subset=["hprop_num"])
 
@@ -101,7 +95,6 @@ def build_matchup_probabilities(tips_df):
             matchup_probs[key] = []
         matchup_probs[key].append(hprob)
 
-    # Calculate average probability across models for each game
     consensus_probs = {}
     for (hteam, ateam), prob_list in matchup_probs.items():
         avg_hprob = sum(prob_list) / len(prob_list)
@@ -110,9 +103,9 @@ def build_matchup_probabilities(tips_df):
     return consensus_probs
 
 # -------------------------------------------------------------------
-# EV Calculation Engine
+# Processing Engine
 # -------------------------------------------------------------------
-def process_sportsbet_odds(odds_data, tips_df, min_win_prob, min_ev_pct, max_ev_pct):
+def process_sportsbet_odds(odds_data, tips_df, min_odds, max_odds, min_win_prob, min_ev_pct):
     rows = []
     matchup_model_probs = build_matchup_probabilities(tips_df)
 
@@ -123,7 +116,6 @@ def process_sportsbet_odds(odds_data, tips_df, min_win_prob, min_ev_pct, max_ev_
         commence_dt = pd.to_datetime(game.get("commence_time")).tz_convert("Australia/Melbourne")
         kickoff_str = commence_dt.strftime("%a %d %b, %I:%M %p")
 
-        # Lookup average Squiggle model win probability for this specific matchup
         h_model_prob = matchup_model_probs.get((home_clean, away_clean), None)
         
         for bookmaker in game.get("bookmakers", []):
@@ -133,24 +125,19 @@ def process_sportsbet_odds(odds_data, tips_df, min_win_prob, min_ev_pct, max_ev_
             bm_title = bookmaker.get("title")
             for market in bookmaker.get("markets", []):
                 mkt_key = market.get("key")
-                
-                mkt_name = "Head to Head"
-                if mkt_key == "spreads":
-                    mkt_name = "Line / Spread"
-                elif mkt_key == "totals":
-                    mkt_name = "Total Points"
+                mkt_name = "Head to Head" if mkt_key == "h2h" else "Line / Spread"
 
                 for outcome in market.get("outcomes", []):
                     team_or_type = outcome.get("name")
                     clean_target = clean_team_name(team_or_type)
-                    price = outcome.get("price", 1.0)
+                    price = float(outcome.get("price", 1.0))
                     point = outcome.get("point", None)
                     
                     target_desc = team_or_type
                     if point is not None:
                         target_desc = f"{team_or_type} ({'+' if point > 0 else ''}{point})"
                     
-                    # Estimate Model Win Probability
+                    # Compute probabilities
                     if mkt_key == "h2h":
                         if h_model_prob is not None:
                             if clean_target == home_clean:
@@ -162,7 +149,6 @@ def process_sportsbet_odds(odds_data, tips_df, min_win_prob, min_ev_pct, max_ev_
                         else:
                             model_prob = 1.0 / price
                     else:
-                        # Baseline assumption for spread/total markets
                         model_prob = 0.52
 
                     # Calculate Expected Value
@@ -170,41 +156,43 @@ def process_sportsbet_odds(odds_data, tips_df, min_win_prob, min_ev_pct, max_ev_
                     ev_pct = round(ev * 100, 1)
                     win_prob_pct = round(model_prob * 100, 1)
                     
-                    # Check Recommendation Criteria
-                    is_recommended = (
-                        ev_pct >= min_ev_pct and 
-                        ev_pct <= max_ev_pct and 
-                        win_prob_pct >= min_win_prob
-                    )
+                    # SAFE BET RULES:
+                    # 1. Odds must fall within target range ($1.20 - $2.00)
+                    # 2. Model Win Probability >= min_win_prob (e.g. 60%)
+                    # 3. EV >= min_ev_pct (e.g. +1.0%)
+                    in_odds_range = (min_odds <= price <= max_odds)
+                    meets_confidence = (win_prob_pct >= min_win_prob)
+                    meets_ev = (ev_pct >= min_ev_pct)
+
+                    is_recommended = in_odds_range and meets_confidence and meets_ev
                     
                     rows.append({
                         "commence_dt": commence_dt,
                         "Kickoff": kickoff_str,
                         "Matchup": f"{home_clean} vs {away_clean}",
-                        "Bookmaker": bm_title,
                         "Market": mkt_name,
                         "Selection": target_desc,
                         "Odds": f"${price:.2f}",
-                        "Model Win Prob": f"{win_prob_pct}%",
+                        "Odds_raw": price,
+                        "Model Confidence": f"{win_prob_pct}%",
                         "Expected Value (EV)": f"{'+' if ev_pct > 0 else ''}{ev_pct}%",
                         "EV_raw": ev,
-                        "win_prob_raw": win_prob_pct,
-                        "Recommendation": "✅ RECOMMENDED VALUE BET" if is_recommended else "❌ No Value"
+                        "Recommendation": "⭐ HIGH CONFIDENCE VALUE" if is_recommended else "❌ Pass"
                     })
     
     df = pd.DataFrame(rows)
     if not df.empty:
         df = df.sort_values(by=["commence_dt", "EV_raw"], ascending=[True, False])
-        df = df.drop(columns=["commence_dt", "EV_raw", "win_prob_raw"])
+        df = df.drop(columns=["commence_dt", "EV_raw", "Odds_raw"])
     return df
 
 # -------------------------------------------------------------------
-# Dashboard UI & Risk Controls
+# Dashboard UI
 # -------------------------------------------------------------------
-st.title("🏉 Sportsbet AFL Smart Bet Finder")
-st.caption("Live Sportsbet odds matched against Squiggle consensus model predictions.")
+st.title("🎯 AFL Safe Bet & High-Confidence Dashboard")
+st.caption("Filters Sportsbet odds for high-confidence favorites ($1.20 - $2.00) backed by Squiggle AI model consensus.")
 
-st.sidebar.header("Model & Risk Controls")
+st.sidebar.header("🎯 Safe Bet Parameters")
 
 if st.sidebar.button("🔄 Force Refresh Data"):
     st.cache_data.clear()
@@ -212,29 +200,29 @@ if st.sidebar.button("🔄 Force Refresh Data"):
 
 st.sidebar.markdown("---")
 
-# Customizable Risk Sliders
+# Odds Window Selector
+odds_range = st.sidebar.slider(
+    "Target Odds Window ($)",
+    min_value=1.05, max_value=3.00, value=(1.20, 2.00), step=0.05,
+    help="Limits selections to safe favorite odds."
+)
+
 min_win_prob = st.sidebar.slider(
-    "Min Model Win Probability (%)", 
-    min_value=5, max_value=60, value=15, step=5,
-    help="Filters out extreme underdogs below this win chance."
+    "Min AI Model Confidence (%)", 
+    min_value=50, max_value=85, value=60, step=5,
+    help="Ensures the model predicts a strong likelihood of winning."
 )
 
 min_ev_pct = st.sidebar.slider(
     "Min Expected Value (+EV %)", 
-    min_value=-5.0, max_value=15.0, value=0.0, step=0.5,
-    help="Minimum mathematical edge required to trigger a recommendation."
-)
-
-max_ev_pct = st.sidebar.slider(
-    "Max Expected Value (+EV %)", 
-    min_value=10.0, max_value=200.0, value=50.0, step=5.0,
-    help="Filters out abnormal data glitches."
+    min_value=0.0, max_value=10.0, value=1.0, step=0.5,
+    help="Ensures you get positive mathematical value."
 )
 
 st.sidebar.markdown("---")
 
 # Fetch Data
-with st.spinner("Fetching Sportsbet odds and Squiggle consensus model data..."):
+with st.spinner("Fetching Sportsbet odds and AI consensus models..."):
     odds_raw, odds_err = fetch_sportsbet_odds(API_KEY)
     tips_df, tips_err = fetch_squiggle_tips(year=2026)
 
@@ -243,22 +231,27 @@ if odds_err:
     st.stop()
 
 if not odds_raw:
-    st.warning("No Sportsbet odds available at this moment.")
+    st.warning("No Sportsbet odds currently available.")
     st.stop()
 
 # Generate DataFrame
-df = process_sportsbet_odds(odds_raw, tips_df, min_win_prob, min_ev_pct, max_ev_pct)
+df = process_sportsbet_odds(
+    odds_raw, tips_df, 
+    min_odds=odds_range[0], max_odds=odds_range[1], 
+    min_win_prob=min_win_prob, min_ev_pct=min_ev_pct
+)
 
 if not df.empty:
-    available_markets = list(df["Market"].unique())
-    selected_markets = st.sidebar.multiselect("Select Betting Markets:", options=available_markets, default=available_markets)
-    only_value = st.sidebar.checkbox("Show Only Recommended Value Bets (+EV)", value=False)
+    only_value = st.sidebar.checkbox("Show ONLY High-Confidence Recommendations", value=True)
     
-    filtered_df = df[df["Market"].isin(selected_markets)]
+    filtered_df = df.copy()
     if only_value:
-        filtered_df = filtered_df[filtered_df["Recommendation"].str.contains("RECOMMENDED")]
+        filtered_df = filtered_df[filtered_df["Recommendation"].str.contains("HIGH CONFIDENCE")]
     
-    st.subheader(f"Upcoming Matches & Sportsbet Markets ({len(filtered_df)} bets listed)")
-    st.dataframe(filtered_df, use_container_width=True)
+    st.subheader(f"Matching Bets ({len(filtered_df)} items)")
+    if filtered_df.empty:
+        st.info("No bets currently meet all safe criteria ($1.20-$2.00 odds + high model confidence + positive EV). Try slightly lowering the confidence or EV slider.")
+    else:
+        st.dataframe(filtered_df, use_container_width=True)
 else:
-    st.info("No matching odds available.")
+    st.info("No odds available.")
