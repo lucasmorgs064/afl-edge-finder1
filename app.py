@@ -43,7 +43,7 @@ def clean_team_name(name):
     """Normalizes team names to match Squiggle API conventions."""
     if not name:
         return name
-    return TEAM_MAP.get(name.strip(), name.strip())
+    return TEAM_MAP.get(str(name).strip(), str(name).strip())
 
 # -------------------------------------------------------------------
 # Data Fetching
@@ -76,31 +76,55 @@ def fetch_sportsbet_odds(api_key: str):
         return None, str(e)
 
 # -------------------------------------------------------------------
+# Matchup Probability Builder
+# -------------------------------------------------------------------
+def build_matchup_probabilities(tips_df):
+    """
+    Groups Squiggle tips by upcoming Matchup (Home vs Away) 
+    and averages hprop across all prediction models.
+    """
+    matchup_probs = {}
+    if tips_df.empty or "hprop" not in tips_df.columns:
+        return matchup_probs
+
+    # Filter for valid numeric hprop values
+    tips_df["hprop_num"] = pd.to_numeric(tips_df["hprop"], errors="coerce")
+    valid_tips = tips_df.dropna(subset=["hprop_num"])
+
+    for _, row in valid_tips.iterrows():
+        hteam = clean_team_name(row.get("hteam"))
+        ateam = clean_team_name(row.get("ateam"))
+        hprob = float(row.get("hprop_num"))
+
+        key = (hteam, ateam)
+        if key not in matchup_probs:
+            matchup_probs[key] = []
+        matchup_probs[key].append(hprob)
+
+    # Calculate average probability across models for each game
+    consensus_probs = {}
+    for (hteam, ateam), prob_list in matchup_probs.items():
+        avg_hprob = sum(prob_list) / len(prob_list)
+        consensus_probs[(hteam, ateam)] = avg_hprob
+
+    return consensus_probs
+
+# -------------------------------------------------------------------
 # EV Calculation Engine
 # -------------------------------------------------------------------
 def process_sportsbet_odds(odds_data, tips_df, min_win_prob, min_ev_pct, max_ev_pct):
     rows = []
-    
-    # Process Squiggle Model Tips
-    squiggle_probs = {}
-    if not tips_df.empty and "hprop" in tips_df.columns:
-        for _, tip in tips_df.iterrows():
-            hteam = clean_team_name(tip.get("hteam"))
-            ateam = clean_team_name(tip.get("ateam"))
-            hprob = float(tip.get("hprop", 0.5))
-            if hteam:
-                squiggle_probs[hteam] = hprob
-            if ateam:
-                squiggle_probs[ateam] = 1.0 - hprob
+    matchup_model_probs = build_matchup_probabilities(tips_df)
 
     for game in odds_data:
-        home_team_raw = game.get("home_team")
-        away_team_raw = game.get("away_team")
-        home_clean = clean_team_name(home_team_raw)
-        away_clean = clean_team_name(away_team_raw)
+        home_clean = clean_team_name(game.get("home_team"))
+        away_clean = clean_team_name(game.get("away_team"))
         
         commence_dt = pd.to_datetime(game.get("commence_time")).tz_convert("Australia/Melbourne")
         kickoff_str = commence_dt.strftime("%a %d %b, %I:%M %p")
+
+        # Lookup average Squiggle model win probability for this specific matchup
+        h_model_prob = matchup_model_probs.get((home_clean, away_clean), None)
         
         for bookmaker in game.get("bookmakers", []):
             if bookmaker.get("key").lower() != TARGET_BOOKMAKER:
@@ -126,18 +150,27 @@ def process_sportsbet_odds(odds_data, tips_df, min_win_prob, min_ev_pct, max_ev_
                     if point is not None:
                         target_desc = f"{team_or_type} ({'+' if point > 0 else ''}{point})"
                     
-                    # Fetch Probability based on Market Type
+                    # Estimate Model Win Probability
                     if mkt_key == "h2h":
-                        model_prob = squiggle_probs.get(clean_target, round(1.0 / price, 3))
+                        if h_model_prob is not None:
+                            if clean_target == home_clean:
+                                model_prob = h_model_prob
+                            elif clean_target == away_clean:
+                                model_prob = 1.0 - h_model_prob
+                            else:
+                                model_prob = 1.0 / price
+                        else:
+                            model_prob = 1.0 / price
                     else:
-                        model_prob = 0.505  # Standard baseline threshold for lines/totals
-                    
+                        # Baseline assumption for spread/total markets
+                        model_prob = 0.52
+
                     # Calculate Expected Value
                     ev = (model_prob * price) - 1.0
                     ev_pct = round(ev * 100, 1)
                     win_prob_pct = round(model_prob * 100, 1)
                     
-                    # Recommendation Criteria
+                    # Check Recommendation Criteria
                     is_recommended = (
                         ev_pct >= min_ev_pct and 
                         ev_pct <= max_ev_pct and 
@@ -166,10 +199,10 @@ def process_sportsbet_odds(odds_data, tips_df, min_win_prob, min_ev_pct, max_ev_
     return df
 
 # -------------------------------------------------------------------
-# Dashboard UI & Filters
+# Dashboard UI & Risk Controls
 # -------------------------------------------------------------------
 st.title("🏉 Sportsbet AFL Smart Bet Finder")
-st.caption("Live Sportsbet odds matched against Squiggle model predictions with customizable risk controls.")
+st.caption("Live Sportsbet odds matched against Squiggle consensus model predictions.")
 
 st.sidebar.header("Model & Risk Controls")
 
@@ -179,7 +212,7 @@ if st.sidebar.button("🔄 Force Refresh Data"):
 
 st.sidebar.markdown("---")
 
-# Sliders tuned for realistic market edges
+# Customizable Risk Sliders
 min_win_prob = st.sidebar.slider(
     "Min Model Win Probability (%)", 
     min_value=5, max_value=60, value=15, step=5,
@@ -188,20 +221,20 @@ min_win_prob = st.sidebar.slider(
 
 min_ev_pct = st.sidebar.slider(
     "Min Expected Value (+EV %)", 
-    min_value=0.0, max_value=15.0, value=0.5, step=0.5,
+    min_value=-5.0, max_value=15.0, value=0.0, step=0.5,
     help="Minimum mathematical edge required to trigger a recommendation."
 )
 
 max_ev_pct = st.sidebar.slider(
     "Max Expected Value (+EV %)", 
-    min_value=10.0, max_value=200.0, value=30.0, step=5.0,
+    min_value=10.0, max_value=200.0, value=50.0, step=5.0,
     help="Filters out abnormal data glitches."
 )
 
 st.sidebar.markdown("---")
 
-# Load Data
-with st.spinner("Fetching latest Sportsbet odds and Squiggle tips..."):
+# Fetch Data
+with st.spinner("Fetching Sportsbet odds and Squiggle consensus model data..."):
     odds_raw, odds_err = fetch_sportsbet_odds(API_KEY)
     tips_df, tips_err = fetch_squiggle_tips(year=2026)
 
@@ -210,7 +243,7 @@ if odds_err:
     st.stop()
 
 if not odds_raw:
-    st.warning("No Sportsbet odds available.")
+    st.warning("No Sportsbet odds available at this moment.")
     st.stop()
 
 # Generate DataFrame
