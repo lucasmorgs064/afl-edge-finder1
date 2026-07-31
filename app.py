@@ -145,18 +145,26 @@ def build_matchup_data(tips_df):
     return consensus_data
 
 # -------------------------------------------------------------------
-# Processing Engine (Unchanged Singles Processing)
+# Processing Engine (Current Round Window + Exact Singles Logic)
 # -------------------------------------------------------------------
 def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60.0):
     rows = []
     matchup_data = build_matchup_data(tips_df)
 
+    # Filter strictly for Current Round / Current Week (0 to 7 days window)
+    now_dt = pd.Timestamp.now(tz="Australia/Melbourne")
+    week_limit_dt = now_dt + pd.Timedelta(days=7)
+
     for game in odds_data:
+        commence_dt = pd.to_datetime(game.get("commence_time")).tz_convert("Australia/Melbourne")
+        
+        # Enforce current week / current round window
+        if not (now_dt <= commence_dt <= week_limit_dt):
+            continue
+
         home_clean = clean_team_name(game.get("home_team"))
         away_clean = clean_team_name(game.get("away_team"))
         game_id = f"{home_clean} vs {away_clean}"
-        
-        commence_dt = pd.to_datetime(game.get("commence_time")).tz_convert("Australia/Melbourne")
         kickoff_str = commence_dt.strftime("%a %d %b, %I:%M %p")
 
         game_stats = matchup_data.get((home_clean, away_clean), {"hprob": None, "hmargin": 0.0})
@@ -288,99 +296,102 @@ def are_legs_compatible(leg1, leg2):
     return True
 
 # -------------------------------------------------------------------
-# Universal SGM Generator (Guarantees 1 SGM per Game with Natural Variety)
+# Dual SGM Engine (Generates Exactly 2 SGMs per Current Round Game)
 # -------------------------------------------------------------------
-def generate_realistic_multis(df, target_min_odds=1.65, target_max_odds=2.35):
+def generate_two_sgms_per_game(df, target_min_odds=1.65, target_max_odds=2.35):
     game_multis = []
     if df.empty:
         return game_multis
 
     for game_id, group in df.groupby("Game_ID"):
-        # Primary anchor leg selection ($1.04 - $1.60 odds)
-        candidate_legs = group[
-            (group["Odds_num"] >= 1.04) & 
-            (group["Odds_num"] <= 1.60)
-        ].drop_duplicates(subset=["Selection"])
+        kickoff_time = group.iloc[0]["Kickoff"]
 
-        # Fallback 1: Expand candidate odds window if options are limited
-        if len(candidate_legs) < 2:
-            candidate_legs = group[
-                (group["Odds_num"] >= 1.02) & 
-                (group["Odds_num"] <= 1.80)
-            ].drop_duplicates(subset=["Selection"])
+        # Helper evaluator function to construct a multi targeting ~$2.00 odds from given candidate legs
+        def find_best_multi(legs_list, multi_type_name):
+            if len(legs_list) < 2:
+                # Fallback: take top selections from whole game pool
+                legs_list = group.sort_values("win_prob_num", ascending=False).drop_duplicates(subset=["Selection"]).to_dict("records")
 
-        # Fallback 2: Take top options across all available selections
-        if len(candidate_legs) < 2:
-            candidate_legs = group.sort_values("win_prob_num", ascending=False).drop_duplicates(subset=["Selection"])
+            if len(legs_list) < 2:
+                return None
 
-        if len(candidate_legs) < 2:
-            continue
-
-        legs_list = candidate_legs.to_dict("records")
-        all_valid_combos = []
-
-        # Evaluate 2, 3, 4, and 5-leg combinations naturally
-        for k_legs in range(2, min(6, len(legs_list) + 1)):
-            for combo in itertools.combinations(legs_list, k_legs):
-                # Verify mutual compatibility
-                compatible = True
-                for i_idx in range(len(combo)):
-                    for j_idx in range(i_idx + 1, len(combo)):
-                        if not are_legs_compatible(combo[i_idx], combo[j_idx]):
-                            compatible = False
+            all_combos = []
+            for k_legs in range(2, min(6, len(legs_list) + 1)):
+                for combo in itertools.combinations(legs_list, k_legs):
+                    compatible = True
+                    for i_idx in range(len(combo)):
+                        for j_idx in range(i_idx + 1, len(combo)):
+                            if not are_legs_compatible(combo[i_idx], combo[j_idx]):
+                                compatible = False
+                                break
+                        if not compatible:
                             break
                     if not compatible:
-                        break
-                
-                if not compatible:
-                    continue
+                        continue
 
-                comb_odds = 1.0
-                comb_prob = 1.0
-                for leg in combo:
-                    comb_odds *= leg["Odds_num"]
-                    comb_prob *= (leg["win_prob_num"] / 100.0)
+                    comb_odds = 1.0
+                    comb_prob = 1.0
+                    for leg in combo:
+                        comb_odds *= leg["Odds_num"]
+                        comb_prob *= (leg["win_prob_num"] / 100.0)
 
-                comb_prob_pct = round(comb_prob * 100, 1)
-                dist_from_target = abs(comb_odds - 2.00)
+                    comb_prob_pct = round(comb_prob * 100, 1)
+                    dist_from_target = abs(comb_odds - 2.00)
 
-                # Secondary penalty only if odds drift far outside target
-                odds_penalty = 0.0
-                if comb_odds < target_min_odds:
-                    odds_penalty = (target_min_odds - comb_odds) * 25.0
-                elif comb_odds > target_max_odds:
-                    odds_penalty = (comb_odds - target_max_odds) * 25.0
+                    combo_score = (comb_prob_pct * 3.0) - (dist_from_target * 25.0)
 
-                combo_score = (comb_prob_pct * 2.5) - (dist_from_target * 20.0) - odds_penalty
+                    formatted_legs = [
+                        f"• **{leg['Selection']}** ({leg['Market']} @ ${leg['Odds_num']:.2f}) — *AI Prob: {leg['win_prob_num']}%*"
+                        for leg in combo
+                    ]
 
-                formatted_legs = [
-                    f"• **{leg['Selection']}** ({leg['Market']} @ ${leg['Odds_num']:.2f}) — *AI Win Prob: {leg['win_prob_num']}%*"
-                    for leg in combo
-                ]
+                    all_combos.append({
+                        "Game": game_id,
+                        "Kickoff": kickoff_time,
+                        "Type": multi_type_name,
+                        "Leg Count": f"{len(combo)} Legs",
+                        "Combined Odds": f"${comb_odds:.2f}",
+                        "comb_odds_num": comb_odds,
+                        "Est. Combined Win Prob": f"{comb_prob_pct}%",
+                        "dist_from_target": dist_from_target,
+                        "score": combo_score,
+                        "Legs": formatted_legs
+                    })
 
-                all_valid_combos.append({
-                    "Game": game_id,
-                    "Kickoff": combo[0]["Kickoff"],
-                    "Leg Count": f"{len(combo)} Legs",
-                    "Combined Odds": f"${comb_odds:.2f}",
-                    "comb_odds_num": comb_odds,
-                    "Est. Combined Win Prob": f"{comb_prob_pct}%",
-                    "dist_from_target": dist_from_target,
-                    "score": combo_score,
-                    "Legs": formatted_legs
-                })
+            if all_combos:
+                in_range = [c for c in all_combos if target_min_odds <= c["comb_odds_num"] <= target_max_odds]
+                if in_range:
+                    return max(in_range, key=lambda x: x["score"])
+                else:
+                    return min(all_combos, key=lambda x: x["dist_from_target"])
+            return None
 
-        if all_valid_combos:
-            # First filter for combos strictly inside target range ($1.65 - $2.35)
-            in_range_combos = [c for c in all_valid_combos if target_min_odds <= c["comb_odds_num"] <= target_max_odds]
-            
-            if in_range_combos:
-                best_combo = max(in_range_combos, key=lambda x: x["score"])
-            else:
-                # Guaranteed Fallback: pick the combo closest to $2.00 target
-                best_combo = min(all_valid_combos, key=lambda x: x["dist_from_target"])
+        # -------------------------------------------------------------
+        # MULTI 1: Safe Cushion & Milestone Disposals (Handicaps + 15+/20+/25+)
+        # -------------------------------------------------------------
+        cushion_disp_legs = group[
+            (group["Market"].isin(["Win Margin / Handicap", "Player Disposals"])) &
+            (~group["Selection"].str.contains("Over ", na=False)) &
+            (~group["Selection"].str.contains("Under ", na=False))
+        ].drop_duplicates(subset=["Selection"]).to_dict("records")
 
-            game_multis.append(best_combo)
+        multi_1 = find_best_multi(cushion_disp_legs, "🛡️ Multi 1: Safe Cushion & Milestone Disposals")
+
+        # -------------------------------------------------------------
+        # MULTI 2: Match Result & Game Totals (H2H + Over/Under Lines)
+        # -------------------------------------------------------------
+        h2h_totals_legs = group[
+            group["Market"].isin(["Head to Head", "Total Points / Goals", "Win Margin / Handicap"])
+        ].drop_duplicates(subset=["Selection"]).to_dict("records")
+
+        multi_2 = find_best_multi(h2h_totals_legs, "⚡ Multi 2: Match Result & Game Totals")
+
+        game_multis.append({
+            "Game": game_id,
+            "Kickoff": kickoff_time,
+            "Multi_1": multi_1,
+            "Multi_2": multi_2
+        })
 
     return game_multis
 
@@ -428,13 +439,16 @@ if not odds_raw:
 
 df = process_sportsbet_odds(odds_raw, tips_df, selected_markets=selected_markets, min_win_prob=min_win_prob)
 
-tab_singles, tab_multis = st.tabs(["📊 High-Confidence Singles ($1.20–$2.00)", "🔥 High-Confidence SGMs (~$2.00 Target)"])
+tab_singles, tab_multis = st.tabs(["📊 High-Confidence Singles ($1.20–$2.00)", "🔥 Current Round SGMs (2 Options per Game)"])
 
+# -------------------------------------------------------------------
+# TAB 1: SINGLES (UNTOUCHED LOGIC)
+# -------------------------------------------------------------------
 with tab_singles:
     if not df.empty:
         strict_df = df[df["is_match"]].sort_values(by=["commence_dt", "win_prob_num"], ascending=[True, False])
         if not strict_df.empty:
-            st.success(f" Found {len(strict_df)} High-Confidence Single Bet(s) in the $1.20 - $2.00 range!")
+            st.success(f" Found {len(strict_df)} High-Confidence Single Bet(s) for the current round!")
             display_df = strict_df[["Kickoff", "Matchup", "Market", "Selection", "Odds", "AI Win Prob", "Recommendation"]]
             st.dataframe(display_df, use_container_width=True)
         else:
@@ -443,23 +457,49 @@ with tab_singles:
             closest_df = df.sort_values(by=["score", "win_prob_num"], ascending=[False, False]).head(5)
             display_closest = closest_df[["Kickoff", "Matchup", "Market", "Selection", "Odds", "AI Win Prob", "Recommendation"]]
             st.dataframe(display_closest, use_container_width=True)
-
-with tab_multis:
-    st.subheader("🏉 Recommended Same-Game Multi for Every Game (~$2.00 Target Return)")
-    st.caption("1 custom multi per fixture using flexible 2–5 legs targeted at $1.65 – $2.35 odds.")
-    
-    multis = generate_realistic_multis(df, target_min_odds=1.65, target_max_odds=2.35)
-    
-    if multis:
-        for multi in multis:
-            with st.expander(f"📍 **{multi['Game']}** ({multi['Kickoff']}) — {multi['Leg Count']} @ **{multi['Combined Odds']}**"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**Recommended SGM Legs:**")
-                    for leg in multi["Legs"]:
-                        st.markdown(leg)
-                with col2:
-                    st.metric("Total Multi Price", multi["Combined Odds"])
-                    st.metric("Est. Combined Model Win Prob", multi["Est. Combined Win Prob"])
     else:
-        st.info("No games available in current odds feed.")
+        st.info("No current round AFL matches scheduled in the feed.")
+
+# -------------------------------------------------------------------
+# TAB 2: CURRENT ROUND SGMs (EXACTLY 2 PER GAME)
+# -------------------------------------------------------------------
+with tab_multis:
+    st.subheader("🏉 Current Round SGMs (~$2.00 Target Return)")
+    st.caption("Displays 2 tailored SGMs per match for every fixture this round, strictly bounded around $1.65 – $2.35 odds.")
+    
+    game_multis_list = generate_two_sgms_per_game(df, target_min_odds=1.65, target_max_odds=2.35)
+    
+    if game_multis_list:
+        for g_data in game_multis_list:
+            st.markdown(f"### 📍 {g_data['Game']} ({g_data['Kickoff']})")
+            
+            col_m1, col_m2 = st.columns(2)
+            
+            with col_m1:
+                m1 = g_data.get("Multi_1")
+                if m1:
+                    with st.expander(f"🛡️ **SGM 1: Safe Cushion & Disposals** ({m1['Leg Count']} @ **{m1['Combined Odds']}**)", expanded=True):
+                        st.write("**Recommended SGM Legs:**")
+                        for leg in m1["Legs"]:
+                            st.markdown(leg)
+                        st.metric("Total Multi Payout", m1["Combined Odds"])
+                        st.metric("Est. Combined Model Win Prob", m1["Est. Combined Win Prob"])
+                else:
+                    st.info("Insufficient market options for SGM 1.")
+                    
+            with col_m2:
+                m2 = g_data.get("Multi_2")
+                if m2:
+                    with st.expander(f"⚡ **SGM 2: H2H & Match Totals** ({m2['Leg Count']} @ **{m2['Combined Odds']}**)", expanded=True):
+                        st.write("**Recommended SGM Legs:**")
+                        for leg in m2["Legs"]:
+                            st.markdown(leg)
+                        st.metric("Total Multi Payout", m2["Combined Odds"])
+                        st.metric("Est. Combined Model Win Prob", m2["Est. Combined Win Prob"])
+                else:
+                    st.info("Insufficient market options for SGM 2.")
+            
+            st.markdown("---")
+    else:
+        st.info("No current round AFL games available in the current odds feed.")
+        
