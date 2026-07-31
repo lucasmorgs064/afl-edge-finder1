@@ -17,7 +17,6 @@ TARGET_BOOKMAKER = "sportsbet"
 
 SQUIGGLE_HEADERS = {"User-Agent": "AFL Safe Bet Analytics - student@college.edu"}
 
-# Canonical AFL Team Names Mapping
 TEAM_MAP = {
     "Adelaide Crows": "Adelaide", "Adelaide": "Adelaide",
     "Brisbane Lions": "Brisbane", "Brisbane": "Brisbane",
@@ -122,7 +121,6 @@ def process_sportsbet_odds(odds_data, tips_df, min_odds, max_odds, min_win_prob,
             if bookmaker.get("key").lower() != TARGET_BOOKMAKER:
                 continue
                 
-            bm_title = bookmaker.get("title")
             for market in bookmaker.get("markets", []):
                 mkt_key = market.get("key")
                 mkt_name = "Head to Head" if mkt_key == "h2h" else "Line / Spread"
@@ -137,7 +135,7 @@ def process_sportsbet_odds(odds_data, tips_df, min_odds, max_odds, min_win_prob,
                     if point is not None:
                         target_desc = f"{team_or_type} ({'+' if point > 0 else ''}{point})"
                     
-                    # Compute probabilities
+                    # Compute win probabilities
                     if mkt_key == "h2h":
                         if h_model_prob is not None:
                             if clean_target == home_clean:
@@ -156,16 +154,29 @@ def process_sportsbet_odds(odds_data, tips_df, min_odds, max_odds, min_win_prob,
                     ev_pct = round(ev * 100, 1)
                     win_prob_pct = round(model_prob * 100, 1)
                     
-                    # SAFE BET RULES:
-                    # 1. Odds must fall within target range ($1.20 - $2.00)
-                    # 2. Model Win Probability >= min_win_prob (e.g. 60%)
-                    # 3. EV >= min_ev_pct (e.g. +1.0%)
+                    # Target strict evaluation criteria
                     in_odds_range = (min_odds <= price <= max_odds)
                     meets_confidence = (win_prob_pct >= min_win_prob)
                     meets_ev = (ev_pct >= min_ev_pct)
 
-                    is_recommended = in_odds_range and meets_confidence and meets_ev
+                    is_strict_match = in_odds_range and meets_confidence and meets_ev
+
+                    # Proximity/Closeness metric for fallback ranking
+                    # Gives highest score to selections close to/inside target odds with strong win chance and EV
+                    odds_penalty = 0 if in_odds_range else min(abs(price - min_odds), abs(price - max_odds)) * 10
+                    closeness_score = (win_prob_pct * 0.6) + (ev_pct * 2.0) - odds_penalty
+
+                    # Status reason for near-miss explanation
+                    reasons = []
+                    if not in_odds_range:
+                        reasons.append(f"Odds ${price:.2f} outside ${min_odds:.2f}-${max_odds:.2f}")
+                    if not meets_confidence:
+                        reasons.append(f"Win Prob {win_prob_pct}% < {min_win_prob}%")
+                    if not meets_ev:
+                        reasons.append(f"EV {ev_pct}% < {min_ev_pct}%")
                     
+                    status_note = "⭐ HIGH CONFIDENCE VALUE" if is_strict_match else ("Near Miss: " + ", ".join(reasons))
+
                     rows.append({
                         "commence_dt": commence_dt,
                         "Kickoff": kickoff_str,
@@ -177,14 +188,13 @@ def process_sportsbet_odds(odds_data, tips_df, min_odds, max_odds, min_win_prob,
                         "Model Confidence": f"{win_prob_pct}%",
                         "Expected Value (EV)": f"{'+' if ev_pct > 0 else ''}{ev_pct}%",
                         "EV_raw": ev,
-                        "Recommendation": "⭐ HIGH CONFIDENCE VALUE" if is_recommended else "❌ Pass"
+                        "win_prob_raw": win_prob_pct,
+                        "is_strict_match": is_strict_match,
+                        "closeness_score": closeness_score,
+                        "Status / Reason": status_note
                     })
     
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values(by=["commence_dt", "EV_raw"], ascending=[True, False])
-        df = df.drop(columns=["commence_dt", "EV_raw", "Odds_raw"])
-    return df
+    return pd.DataFrame(rows)
 
 # -------------------------------------------------------------------
 # Dashboard UI
@@ -234,7 +244,7 @@ if not odds_raw:
     st.warning("No Sportsbet odds currently available.")
     st.stop()
 
-# Generate DataFrame
+# Process Odds
 df = process_sportsbet_odds(
     odds_raw, tips_df, 
     min_odds=odds_range[0], max_odds=odds_range[1], 
@@ -242,16 +252,20 @@ df = process_sportsbet_odds(
 )
 
 if not df.empty:
-    only_value = st.sidebar.checkbox("Show ONLY High-Confidence Recommendations", value=True)
+    strict_df = df[df["is_strict_match"]].sort_values(by=["commence_dt", "EV_raw"], ascending=[True, False])
     
-    filtered_df = df.copy()
-    if only_value:
-        filtered_df = filtered_df[filtered_df["Recommendation"].str.contains("HIGH CONFIDENCE")]
-    
-    st.subheader(f"Matching Bets ({len(filtered_df)} items)")
-    if filtered_df.empty:
-        st.info("No bets currently meet all safe criteria ($1.20-$2.00 odds + high model confidence + positive EV). Try slightly lowering the confidence or EV slider.")
+    if not strict_df.empty:
+        st.success(f" Found {len(strict_df)} High-Confidence Value Bet(s) matching all target rules!")
+        display_df = strict_df.drop(columns=["commence_dt", "EV_raw", "win_prob_raw", "Odds_raw", "is_strict_match", "closeness_score"])
+        st.dataframe(display_df, use_container_width=True)
     else:
-        st.dataframe(filtered_df, use_container_width=True)
+        st.info(f"💡 No bets currently match **ALL** strict rules (${odds_range[0]:.2f}-${odds_range[1]:.2f} odds + {min_win_prob}% confidence + +{min_ev_pct}% EV).")
+        st.subheader("🔍 Closest Candidate Bets On The Slate")
+        st.caption("Here are the top candidates that came closest to your criteria, sorted by AI model confidence & EV:")
+        
+        # Fallback: Sort by closeness_score & EV
+        closest_df = df.sort_values(by=["closeness_score", "EV_raw"], ascending=[False, False]).head(5)
+        display_closest = closest_df.drop(columns=["commence_dt", "EV_raw", "win_prob_raw", "Odds_raw", "is_strict_match", "closeness_score"])
+        st.dataframe(display_closest, use_container_width=True)
 else:
     st.info("No odds available.")
