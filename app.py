@@ -44,7 +44,7 @@ def clean_team_name(name):
     return TEAM_MAP.get(str(name).strip(), str(name).strip())
 
 # -------------------------------------------------------------------
-# Data Fetching (Squiggle Models & Sportsbet Market Data)
+# Data Fetching
 # -------------------------------------------------------------------
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_squiggle_tips(year=2026):
@@ -74,7 +74,7 @@ def fetch_sportsbet_odds(api_key: str):
         return None, str(e)
 
 # -------------------------------------------------------------------
-# Model Consensus & Predictive Data Engine
+# Predictive Model Consensus Engine
 # -------------------------------------------------------------------
 def build_matchup_data(tips_df):
     matchup_data = {}
@@ -113,7 +113,7 @@ def build_matchup_data(tips_df):
     return consensus_data
 
 # -------------------------------------------------------------------
-# Multi-Market Data Evaluation
+# Processing Engine with Realistic Probability Guardrails
 # -------------------------------------------------------------------
 def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60.0):
     rows = []
@@ -159,6 +159,12 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                     point = outcome.get("point", None)
                     description = outcome.get("description", "")
                     
+                    if price <= 1.0:
+                        continue
+
+                    # Market Implied Probability (1 / Price)
+                    market_implied_prob = 1.0 / price
+                    
                     if mkt_name == "Player Disposals":
                         player = description if description else team_or_type
                         line_val = f" {point}+" if point else ""
@@ -168,23 +174,24 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                     else:
                         target_desc = team_or_type
                     
-                    # Model probability calculations
+                    # Model Probability Calculation with Strict Implied Sanity Check
                     if mkt_key == "h2h":
                         if h_model_prob is not None:
-                            model_prob = h_model_prob if clean_target == home_clean else (1.0 - h_model_prob)
+                            raw_model_prob = h_model_prob if clean_target == home_clean else (1.0 - h_model_prob)
+                            # Sanity check: do not allow model prob to diverge wildly from market odds for huge underdogs
+                            model_prob = min(raw_model_prob, market_implied_prob * 1.25)
                         else:
-                            model_prob = 1.0 / price
+                            model_prob = market_implied_prob
                     elif mkt_key == "spreads":
                         if point is not None:
                             margin_diff = h_model_margin + point if clean_target == home_clean else (-h_model_margin) + point
-                            model_prob = min(max(0.50 + (margin_diff * 0.015), 0.10), 0.92)
+                            model_prob = min(max(0.50 + (margin_diff * 0.015), 0.10), 0.90)
                         else:
-                            model_prob = 0.52
+                            model_prob = market_implied_prob
                     elif mkt_name == "Player Disposals":
-                        # Confidence curve favoring low/safe disposal thresholds
-                        model_prob = min(max((1.0 / price) * 1.06, 0.55), 0.90)
+                        model_prob = min(market_implied_prob * 1.05, 0.92)
                     else:
-                        model_prob = 1.0 / price
+                        model_prob = market_implied_prob
 
                     win_prob_pct = round(model_prob * 100, 1)
                     in_safe_range = (1.20 <= price <= 2.00)
@@ -220,28 +227,30 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
     return pd.DataFrame(rows)
 
 # -------------------------------------------------------------------
-# Optimized 3-Leg Safe SGM Multi Engine ($1.80 - $2.10 Target Odds)
+# Strict Realistic 3-Leg SGM Generator (Anchor Legs $1.08–$1.45 Only)
 # -------------------------------------------------------------------
-def generate_safe_game_multis(df, target_min_odds=1.80, target_max_odds=2.15, min_leg_prob=72.0):
+def generate_realistic_multis(df, target_min_odds=1.80, target_max_odds=2.15):
     game_multis = []
     if df.empty:
         return game_multis
 
     for game_id, group in df.groupby("Game_ID"):
-        # Select high-confidence anchor legs (AI Win Prob >= min_leg_prob)
-        safe_legs = group[group["win_prob_num"] >= min_leg_prob].sort_values(
-            by=["win_prob_num", "Odds_num"], ascending=[False, True]
-        )
-        safe_legs = safe_legs.drop_duplicates(subset=["Selection"])
+        # FILTER 1: Only allow heavy anchor favorite legs ($1.08 to $1.45 odds) with high AI win prob
+        safe_anchor_legs = group[
+            (group["Odds_num"] >= 1.08) & 
+            (group["Odds_num"] <= 1.45) & 
+            (group["win_prob_num"] >= 68.0)
+        ].sort_values(by=["win_prob_num", "Odds_num"], ascending=[False, True])
+        
+        safe_anchor_legs = safe_anchor_legs.drop_duplicates(subset=["Selection"])
 
-        if len(safe_legs) < 3:
-            # Fallback to top confidence legs if game has tight markets
-            safe_legs = group.sort_values(by=["win_prob_num"], ascending=False).drop_duplicates(subset=["Selection"])
+        if len(safe_anchor_legs) < 3:
+            continue  # Skip if match doesn't have 3 genuinely safe heavy favorite legs
 
-        legs_list = safe_legs.to_dict("records")
+        legs_list = safe_anchor_legs.to_dict("records")
         best_multi = None
 
-        # Build combinations of 3 legs targeting $1.80 - $2.15 combined odds
+        # FILTER 2: Find a 3-leg combination whose combined product sits in $1.80 - $2.15
         for i in range(len(legs_list)):
             for j in range(i + 1, len(legs_list)):
                 for k in range(j + 1, len(legs_list)):
@@ -258,11 +267,10 @@ def generate_safe_game_multis(df, target_min_odds=1.80, target_max_odds=2.15, mi
                             "Combined Odds": f"${comb_odds:.2f}",
                             "Est. Combined Win Prob": f"{comb_prob_pct}%",
                             "Legs": [
-                                f"• **{l1['Selection']}** ({l1['Market']} @ ${l1['Odds_num']:.2f}) — *AI Prob: {l1['win_prob_num']}%*",
-                                f"• **{l2['Selection']}** ({l2['Market']} @ ${l2['Odds_num']:.2f}) — *AI Prob: {l2['win_prob_num']}%*",
-                                f"• **{l3['Selection']}** ({l3['Market']} @ ${l3['Odds_num']:.2f}) — *AI Prob: {l3['win_prob_num']}%*"
-                            ],
-                            "score": comb_prob_pct
+                                f"• **{l1['Selection']}** ({l1['Market']} @ ${l1['Odds_num']:.2f}) — *AI Win Prob: {l1['win_prob_num']}%*",
+                                f"• **{l2['Selection']}** ({l2['Market']} @ ${l2['Odds_num']:.2f}) — *AI Win Prob: {l2['win_prob_num']}%*",
+                                f"• **{l3['Selection']}** ({l3['Market']} @ ${l3['Odds_num']:.2f}) — *AI Win Prob: {l3['win_prob_num']}%*"
+                            ]
                         }
                         break
                 if best_multi:
@@ -270,7 +278,7 @@ def generate_safe_game_multis(df, target_min_odds=1.80, target_max_odds=2.15, mi
             if best_multi:
                 break
 
-        # If no exact $1.80-$2.15 combination was found, select the closest top-confidence 3-leg multi
+        # Fallback: If no exact $1.80–$2.15 match, pick top 3 highest probability heavy favorite legs
         if not best_multi and len(legs_list) >= 3:
             l1, l2, l3 = legs_list[0], legs_list[1], legs_list[2]
             comb_odds = l1["Odds_num"] * l2["Odds_num"] * l3["Odds_num"]
@@ -281,11 +289,10 @@ def generate_safe_game_multis(df, target_min_odds=1.80, target_max_odds=2.15, mi
                 "Combined Odds": f"${comb_odds:.2f}",
                 "Est. Combined Win Prob": f"{round(comb_prob * 100, 1)}%",
                 "Legs": [
-                    f"• **{l1['Selection']}** ({l1['Market']} @ ${l1['Odds_num']:.2f}) — *AI Prob: {l1['win_prob_num']}%*",
-                    f"• **{l2['Selection']}** ({l2['Market']} @ ${l2['Odds_num']:.2f}) — *AI Prob: {l2['win_prob_num']}%*",
-                    f"• **{l3['Selection']}** ({l3['Market']} @ ${l3['Odds_num']:.2f}) — *AI Prob: {l3['win_prob_num']}%*"
-                ],
-                "score": round(comb_prob * 100, 1)
+                    f"• **{l1['Selection']}** ({l1['Market']} @ ${l1['Odds_num']:.2f}) — *AI Win Prob: {l1['win_prob_num']}%*",
+                    f"• **{l2['Selection']}** ({l2['Market']} @ ${l2['Odds_num']:.2f}) — *AI Win Prob: {l2['win_prob_num']}%*",
+                    f"• **{l3['Selection']}** ({l3['Market']} @ ${l3['Odds_num']:.2f}) — *AI Win Prob: {l3['win_prob_num']}%*"
+                ]
             }
 
         if best_multi:
@@ -296,12 +303,12 @@ def generate_safe_game_multis(df, target_min_odds=1.80, target_max_odds=2.15, mi
 # -------------------------------------------------------------------
 # Dashboard Interface
 # -------------------------------------------------------------------
-st.title("🎯 AFL Safe Bet & 3-Leg Multi Engine")
-st.caption("Analyzes Sportsbet odds & Squiggle AI models to build high-confidence $1.80–$2.00 SGMs.")
+st.title("🎯 AFL Safe Bet & Realistic SGM Finder")
+st.caption("Filters Sportsbet & Squiggle data to identify high-probability single bets and realistic 3-leg SGMs.")
 
-st.sidebar.header("⚙️ SGM Controls")
+st.sidebar.header("⚙️ Controls")
 
-if st.sidebar.button("🔄 Refresh Data & News"):
+if st.sidebar.button("🔄 Refresh Data"):
     st.cache_data.clear()
     st.rerun()
 
@@ -314,35 +321,34 @@ selected_markets = st.sidebar.multiselect(
     default=available_markets
 )
 
-min_leg_confidence = st.sidebar.slider(
-    "Min Individual Leg AI Prob (%)", 
-    min_value=60, max_value=85, value=70, step=2,
-    help="Ensures every leg in the multi has high individual safety."
+min_win_prob = st.sidebar.slider(
+    "Min AI Win Prob (%)", 
+    min_value=50, max_value=80, value=60, step=5
 )
 
 st.sidebar.markdown("---")
 
-with st.spinner("Fetching Sportsbet odds & Squiggle predictions..."):
+with st.spinner("Analyzing Sportsbet odds & Squiggle predictive models..."):
     odds_raw, odds_err = fetch_sportsbet_odds(API_KEY)
     tips_df, tips_err = fetch_squiggle_tips(year=2026)
 
 if odds_err:
-    st.error(f"Error: {odds_err}")
+    st.error(f"Error fetching odds: {odds_err}")
     st.stop()
 
 if not odds_raw:
     st.warning("No Sportsbet odds available at the moment.")
     st.stop()
 
-df = process_sportsbet_odds(odds_raw, tips_df, selected_markets=selected_markets, min_win_prob=60.0)
+df = process_sportsbet_odds(odds_raw, tips_df, selected_markets=selected_markets, min_win_prob=min_win_prob)
 
-tab_singles, tab_multis = st.tabs(["📊 High-Confidence Singles ($1.20–$2.00)", "🔥 Safe 3-Leg SGMs ($1.80–$2.00 Target)"])
+tab_singles, tab_multis = st.tabs(["📊 High-Confidence Singles ($1.20–$2.00)", "🔥 Realistic Safe 3-Leg SGMs ($1.80–$2.10)"])
 
 with tab_singles:
     if not df.empty:
         strict_df = df[df["is_match"]].sort_values(by=["commence_dt", "win_prob_num"], ascending=[True, False])
         if not strict_df.empty:
-            st.success(f" Found {len(strict_df)} High-Confidence Bet(s) in the $1.20 - $2.00 range!")
+            st.success(f" Found {len(strict_df)} High-Confidence Single Bet(s) in the $1.20 - $2.00 range!")
             display_df = strict_df[["Kickoff", "Matchup", "Market", "Selection", "Odds", "AI Win Prob", "Recommendation"]]
             st.dataframe(display_df, use_container_width=True)
         else:
@@ -353,21 +359,21 @@ with tab_singles:
             st.dataframe(display_closest, use_container_width=True)
 
 with tab_multis:
-    st.subheader("🏉 Recommended Safe 3-Leg Multis ($1.80 – $2.10 Price Target)")
-    st.caption("Each multi combines 3 anchor legs selected for high individual model confidence ($\ge 70\%$):")
+    st.subheader("🏉 Realistic 3-Leg Same-Game Multis ($1.80 – $2.10 Combined Return)")
+    st.caption("Constructed exclusively from heavy individual favorite legs ($1.08–$1.45 individual odds):")
     
-    multis = generate_safe_game_multis(df, target_min_odds=1.80, target_max_odds=2.15, min_leg_prob=min_leg_confidence)
+    multis = generate_realistic_multis(df, target_min_odds=1.80, target_max_odds=2.15)
     
     if multis:
         for multi in multis:
             with st.expander(f"📍 **{multi['Game']}** ({multi['Kickoff']}) — Combined Price: **{multi['Combined Odds']}**"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.write("**Data-Backed Legs:**")
+                    st.write("**Heavy Favorite Legs:**")
                     for leg in multi["Legs"]:
                         st.markdown(leg)
                 with col2:
                     st.metric("Total Multi Price", multi["Combined Odds"])
-                    st.metric("Est. Combined Model Confidence", multi["Est. Combined Win Prob"])
+                    st.metric("Est. Combined Model Win Prob", multi["Est. Combined Win Prob"])
     else:
-        st.info("No games currently have sufficient high-confidence market legs to build an SGM in the target $1.80–$2.10 range.")
+        st.info("No matches currently have 3 heavy anchor legs ($1.08–$1.45) available to form a safe SGM.")
