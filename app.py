@@ -128,17 +128,16 @@ def process_sportsbet_odds(odds_data, tips_df, min_win_prob, min_ev_pct, max_ev_
                     
                     # Fetch Probability based on Market Type
                     if mkt_key == "h2h":
-                        # If team not in model, default to realistic impl. odds (1/price) rather than 50%
                         model_prob = squiggle_probs.get(clean_target, round(1.0 / price, 3))
                     else:
-                        model_prob = 0.525  # Slight edge threshold for lines/totals
+                        model_prob = 0.505  # Standard baseline threshold for lines/totals
                     
                     # Calculate Expected Value
                     ev = (model_prob * price) - 1.0
                     ev_pct = round(ev * 100, 1)
                     win_prob_pct = round(model_prob * 100, 1)
                     
-                    # Recommendation Criteria based on User Sliders
+                    # Recommendation Criteria
                     is_recommended = (
                         ev_pct >= min_ev_pct and 
                         ev_pct <= max_ev_pct and 
@@ -180,23 +179,23 @@ if st.sidebar.button("🔄 Force Refresh Data"):
 
 st.sidebar.markdown("---")
 
-# Sliders to tune recommendations
+# Sliders tuned for realistic market edges
 min_win_prob = st.sidebar.slider(
     "Min Model Win Probability (%)", 
-    min_value=10, max_value=60, value=25, step=5,
-    help="Filters out high-risk extreme underdogs below this win chance."
+    min_value=5, max_value=60, value=15, step=5,
+    help="Filters out extreme underdogs below this win chance."
 )
 
 min_ev_pct = st.sidebar.slider(
     "Min Expected Value (+EV %)", 
-    min_value=1.0, max_value=20.0, value=3.0, step=0.5,
+    min_value=0.0, max_value=15.0, value=0.5, step=0.5,
     help="Minimum mathematical edge required to trigger a recommendation."
 )
 
 max_ev_pct = st.sidebar.slider(
     "Max Expected Value (+EV %)", 
-    min_value=20.0, max_value=200.0, value=50.0, step=10.0,
-    help="Filters out absurd statistical anomalies/glitches above this percentage."
+    min_value=10.0, max_value=200.0, value=30.0, step=5.0,
+    help="Filters out abnormal data glitches."
 )
 
 st.sidebar.markdown("---")
