@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 # Page Configuration
-st.set_page_config(page_title="AFL Safe Bet & Realistic SGM Finder", page_icon="🏉", layout="wide")
+st.set_page_config(page_title="AFL Safe Bet & SGM Engine", page_icon="🏉", layout="wide")
 
 # -------------------------------------------------------------------
 # Configuration & API Setup
@@ -12,8 +12,8 @@ st.set_page_config(page_title="AFL Safe Bet & Realistic SGM Finder", page_icon="
 API_KEY = st.secrets.get("ODDS_API_KEY", os.environ.get("ODDS_API_KEY", "f9366aa6d54b45008ab1df1b44634266"))
 SPORT = "aussierules_afl"
 REGIONS = "au"
-# Featured markets only to avoid 422 Unprocessable Entity on standard odds endpoint
-MARKETS = "h2h,spreads,totals"
+FEATURED_MARKETS = "h2h,spreads,totals"
+PROP_MARKETS = "player_disposals"
 TARGET_BOOKMAKER = "sportsbet"
 
 SQUIGGLE_HEADERS = {"User-Agent": "AFL Safe Bet Analytics - student@college.edu"}
@@ -45,7 +45,7 @@ def clean_team_name(name):
     return TEAM_MAP.get(str(name).strip(), str(name).strip())
 
 # -------------------------------------------------------------------
-# Data Fetching
+# Data Fetching (Squiggle + The Odds API dual endpoints)
 # -------------------------------------------------------------------
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_squiggle_tips(year=2026):
@@ -58,24 +58,57 @@ def fetch_squiggle_tips(year=2026):
         return pd.DataFrame(), str(e)
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_sportsbet_odds(api_key: str):
+def fetch_sportsbet_odds(api_key: str, include_props=True):
+    # Endpoint 1: Fetch Featured Markets (h2h, spreads, totals)
     url = f"https://api.the-odds-api.com/v4/sports/{SPORT}/odds/"
     params = {
         "apiKey": api_key,
         "regions": REGIONS,
-        "markets": MARKETS,
+        "markets": FEATURED_MARKETS,
         "bookmakers": TARGET_BOOKMAKER,
         "dateFormat": "iso",
     }
     try:
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
-        return response.json(), None
+        games = response.json()
     except requests.exceptions.RequestException as e:
         return None, str(e)
 
+    # Endpoint 2: Fetch Player Props event-by-event if selected
+    if include_props and games:
+        for game in games:
+            event_id = game.get("id")
+            if not event_id:
+                continue
+            
+            event_url = f"https://api.the-odds-api.com/v4/sports/{SPORT}/events/{event_id}/odds"
+            event_params = {
+                "apiKey": api_key,
+                "regions": REGIONS,
+                "markets": PROP_MARKETS,
+                "bookmakers": TARGET_BOOKMAKER,
+                "dateFormat": "iso",
+            }
+            try:
+                e_resp = requests.get(event_url, params=event_params, timeout=5)
+                if e_resp.status_code == 200:
+                    e_data = e_resp.json()
+                    e_bookmakers = e_data.get("bookmakers", [])
+                    
+                    # Merge player disposal markets into primary game object
+                    for bm in e_bookmakers:
+                        if bm.get("key").lower() == TARGET_BOOKMAKER:
+                            for game_bm in game.get("bookmakers", []):
+                                if game_bm.get("key").lower() == TARGET_BOOKMAKER:
+                                    game_bm["markets"].extend(bm.get("markets", []))
+            except Exception:
+                pass  # Fallback gracefully if player props are unavailable for an event
+
+    return games, None
+
 # -------------------------------------------------------------------
-# Predictive Model Consensus Engine
+# Model Consensus Engine
 # -------------------------------------------------------------------
 def build_matchup_data(tips_df):
     matchup_data = {}
@@ -114,7 +147,7 @@ def build_matchup_data(tips_df):
     return consensus_data
 
 # -------------------------------------------------------------------
-# Processing Engine with Realistic Probability Caps
+# Processing Engine with Realistic Odds Caps
 # -------------------------------------------------------------------
 def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60.0):
     rows = []
@@ -145,6 +178,8 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                     mkt_name = "Win Margin / Handicap"
                 elif mkt_key == "totals":
                     mkt_name = "Total Points / Goals"
+                elif "player_disposals" in mkt_key:
+                    mkt_name = "Player Disposals"
                 else:
                     mkt_name = mkt_key.replace("_", " ").title()
 
@@ -156,6 +191,7 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                     clean_target = clean_team_name(team_or_type)
                     price = float(outcome.get("price", 1.0))
                     point = outcome.get("point", None)
+                    description = outcome.get("description", "")
                     
                     if price <= 1.0:
                         continue
@@ -163,16 +199,19 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                     # Market Implied Probability (1 / Price)
                     market_implied_prob = 1.0 / price
                     
-                    if point is not None:
+                    if mkt_name == "Player Disposals":
+                        player = description if description else team_or_type
+                        line_val = f" {point}+" if point else ""
+                        target_desc = f"{player}{line_val} Disposals"
+                    elif point is not None:
                         target_desc = f"{team_or_type} ({'+' if point > 0 else ''}{point})"
                     else:
                         target_desc = team_or_type
                     
-                    # Model Probability Calculation bounded by Market Sanity Check
+                    # Sanity checks: prevents longshots ($15.00 underdogs) from having high probabilities
                     if mkt_key == "h2h":
                         if h_model_prob is not None:
                             raw_model_prob = h_model_prob if clean_target == home_clean else (1.0 - h_model_prob)
-                            # Sanity check: Prevents longshots ($15 underdogs) from getting high probabilities
                             model_prob = min(raw_model_prob, market_implied_prob * 1.25)
                         else:
                             model_prob = market_implied_prob
@@ -182,6 +221,8 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                             model_prob = min(max(0.50 + (margin_diff * 0.015), 0.10), 0.90)
                         else:
                             model_prob = market_implied_prob
+                    elif mkt_name == "Player Disposals":
+                        model_prob = min(market_implied_prob * 1.05, 0.92)
                     else:
                         model_prob = market_implied_prob
 
@@ -219,7 +260,7 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
     return pd.DataFrame(rows)
 
 # -------------------------------------------------------------------
-# Strict Realistic 3-Leg SGM Generator (Anchor Legs $1.08–$1.45)
+# Strict Realistic 3-Leg SGM Generator (Anchor Legs $1.08–$1.45 Only)
 # -------------------------------------------------------------------
 def generate_realistic_multis(df, target_min_odds=1.80, target_max_odds=2.15):
     game_multis = []
@@ -227,11 +268,11 @@ def generate_realistic_multis(df, target_min_odds=1.80, target_max_odds=2.15):
         return game_multis
 
     for game_id, group in df.groupby("Game_ID"):
-        # Filter for heavy favorite anchor legs ($1.08 to $1.45)
+        # Filter strictly for heavy anchor favorites ($1.08 to $1.45 odds)
         safe_anchor_legs = group[
             (group["Odds_num"] >= 1.08) & 
             (group["Odds_num"] <= 1.45) & 
-            (group["win_prob_num"] >= 65.0)
+            (group["win_prob_num"] >= 68.0)
         ].sort_values(by=["win_prob_num", "Odds_num"], ascending=[False, True])
         
         safe_anchor_legs = safe_anchor_legs.drop_duplicates(subset=["Selection"])
@@ -242,7 +283,7 @@ def generate_realistic_multis(df, target_min_odds=1.80, target_max_odds=2.15):
         legs_list = safe_anchor_legs.to_dict("records")
         best_multi = None
 
-        # Look for 3-leg combinations targeting combined odds of $1.80 to $2.15
+        # Build 3-leg combinations targeting combined payout of $1.80 to $2.15
         for i in range(len(legs_list)):
             for j in range(i + 1, len(legs_list)):
                 for k in range(j + 1, len(legs_list)):
@@ -279,7 +320,7 @@ def generate_realistic_multis(df, target_min_odds=1.80, target_max_odds=2.15):
 # Dashboard Interface
 # -------------------------------------------------------------------
 st.title("🎯 AFL Safe Bet & Realistic SGM Finder")
-st.caption("Analyzes Sportsbet & Squiggle AI models to find high-probability singles and realistic 3-leg SGMs.")
+st.caption("Analyzes Sportsbet odds & Squiggle AI models to identify high-probability singles and realistic 3-leg SGMs.")
 
 st.sidebar.header("⚙️ Controls")
 
@@ -289,7 +330,7 @@ if st.sidebar.button("🔄 Refresh Data"):
 
 st.sidebar.markdown("---")
 
-available_markets = ["Head to Head", "Win Margin / Handicap", "Total Points / Goals"]
+available_markets = ["Head to Head", "Win Margin / Handicap", "Total Points / Goals", "Player Disposals"]
 selected_markets = st.sidebar.multiselect(
     "Active Betting Markets",
     options=available_markets,
@@ -303,8 +344,10 @@ min_win_prob = st.sidebar.slider(
 
 st.sidebar.markdown("---")
 
-with st.spinner("Analyzing Sportsbet odds & Squiggle predictive models..."):
-    odds_raw, odds_err = fetch_sportsbet_odds(API_KEY)
+include_player_props = "Player Disposals" in selected_markets
+
+with st.spinner("Fetching Sportsbet odds & Squiggle predictions..."):
+    odds_raw, odds_err = fetch_sportsbet_odds(API_KEY, include_props=include_player_props)
     tips_df, tips_err = fetch_squiggle_tips(year=2026)
 
 if odds_err:
