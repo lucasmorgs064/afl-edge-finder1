@@ -144,7 +144,7 @@ def build_matchup_data(tips_df):
     return consensus_data
 
 # -------------------------------------------------------------------
-# Processing Engine
+# Processing Engine with Sportsbet Label Formatting
 # -------------------------------------------------------------------
 def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60.0):
     rows = []
@@ -184,7 +184,7 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
                     continue
 
                 for outcome in market.get("outcomes", []):
-                    team_or_type = outcome.get("name")
+                    team_or_type = outcome.get("name", "")
                     clean_target = clean_team_name(team_or_type)
                     price = float(outcome.get("price", 1.0))
                     point = outcome.get("point", None)
@@ -195,11 +195,24 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
 
                     market_implied_prob = 1.0 / price
                     
+                    # Sportsbet Formatting Rules
                     if mkt_name == "Player Disposals":
                         player = description if description else team_or_type
-                        line_val = f" {point}+" if point else ""
-                        target_desc = f"{player}{line_val} Disposals"
-                        team_assoc = home_clean if clean_target == home_clean else away_clean
+                        if point is not None:
+                            # Integer thresholds -> "20+ Disposals"
+                            if float(point).is_integer():
+                                target_desc = f"{player} {int(point)}+ Disposals"
+                            # Half point thresholds -> "Over 24.5 Disposals" / "Under 24.5 Disposals"
+                            else:
+                                prefix = "Over " if "Over" in team_or_type or "Over" in description else ("Under " if "Under" in team_or_type or "Under" in description else "")
+                                target_desc = f"{player} {prefix}{point} Disposals"
+                        else:
+                            target_desc = f"{player} Disposals"
+                        team_assoc = player
+                    elif mkt_name == "Total Points / Goals":
+                        prefix = "Over " if "Over" in team_or_type else ("Under " if "Under" in team_or_type else "")
+                        target_desc = f"{prefix}{point} Total Points" if point else team_or_type
+                        team_assoc = "Game Total"
                     elif point is not None:
                         target_desc = f"{team_or_type} ({'+' if point > 0 else ''}{point})"
                         team_assoc = clean_target
@@ -261,7 +274,7 @@ def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60
     return pd.DataFrame(rows)
 
 # -------------------------------------------------------------------
-# Conflict Check Helper Function
+# Conflict Check
 # -------------------------------------------------------------------
 def are_legs_compatible(leg1, leg2):
     # Rule 1: No H2H or Handicap conflict (cannot pick opposing teams)
@@ -274,39 +287,39 @@ def are_legs_compatible(leg1, leg2):
         if ("Over" in leg1["Selection"] and "Under" in leg2["Selection"]) or ("Under" in leg1["Selection"] and "Over" in leg2["Selection"]):
             return False
 
-    # Rule 3: No duplicate selections
+    # Rule 3: No duplicate player or market selections
     if leg1["Selection"] == leg2["Selection"]:
         return False
 
     return True
 
 # -------------------------------------------------------------------
-# Conflict-Free SGM Generator (~$2.00 Target Odds)
+# Unstructured SGM Generator (Pure Odds & Confidence Scoring)
 # -------------------------------------------------------------------
-def generate_realistic_multis(df, target_min_odds=1.70, target_max_odds=2.40):
+def generate_realistic_multis(df, target_min_odds=1.60, target_max_odds=2.50):
     game_multis = []
     if df.empty:
         return game_multis
 
     for game_id, group in df.groupby("Game_ID"):
-        sorted_legs = group.sort_values(
-            by=["win_prob_num", "Odds_num"], ascending=[False, True]
-        ).drop_duplicates(subset=["Selection"])
+        # Take high-confidence candidate legs
+        candidate_legs = group[group["win_prob_num"] >= 55.0].drop_duplicates(subset=["Selection"])
 
-        if len(sorted_legs) < 3:
+        if len(candidate_legs) < 3:
+            candidate_legs = group.drop_duplicates(subset=["Selection"])
+
+        if len(candidate_legs) < 3:
             continue
 
-        legs_list = sorted_legs.to_dict("records")
-        best_multi = None
-        closest_multi = None
-        closest_diff = 999.0
+        legs_list = candidate_legs.to_dict("records")
+        all_valid_combos = []
 
+        # Evaluate ALL valid 3-leg combinations with zero structural restrictions
         for i in range(len(legs_list)):
             for j in range(i + 1, len(legs_list)):
                 for k in range(j + 1, len(legs_list)):
                     l1, l2, l3 = legs_list[i], legs_list[j], legs_list[k]
                     
-                    # Verify no conflicting outcomes
                     if not (are_legs_compatible(l1, l2) and are_legs_compatible(l1, l3) and are_legs_compatible(l2, l3)):
                         continue
 
@@ -314,37 +327,28 @@ def generate_realistic_multis(df, target_min_odds=1.70, target_max_odds=2.40):
                     comb_prob = (l1["win_prob_num"] / 100.0) * (l2["win_prob_num"] / 100.0) * (l3["win_prob_num"] / 100.0)
                     comb_prob_pct = round(comb_prob * 100, 1)
 
-                    multi_payload = {
+                    # Score combination strictly on combined AI win probability and closeness to ~$2.00 target odds
+                    dist_from_2 = abs(comb_odds - 2.00)
+                    combo_score = comb_prob_pct - (dist_from_2 * 18.0)
+
+                    all_valid_combos.append({
                         "Game": game_id,
                         "Kickoff": l1["Kickoff"],
                         "Combined Odds": f"${comb_odds:.2f}",
+                        "comb_odds_num": comb_odds,
                         "Est. Combined Win Prob": f"{comb_prob_pct}%",
+                        "score": combo_score,
                         "Legs": [
                             f"• **{l1['Selection']}** ({l1['Market']} @ ${l1['Odds_num']:.2f}) — *AI Win Prob: {l1['win_prob_num']}%*",
                             f"• **{l2['Selection']}** ({l2['Market']} @ ${l2['Odds_num']:.2f}) — *AI Win Prob: {l2['win_prob_num']}%*",
                             f"• **{l3['Selection']}** ({l3['Market']} @ ${l3['Odds_num']:.2f}) — *AI Win Prob: {l3['win_prob_num']}%*"
                         ]
-                    }
+                    })
 
-                    # Target ideally between $1.70 and $2.40 (centered at ~$2.00)
-                    if target_min_odds <= comb_odds <= target_max_odds:
-                        best_multi = multi_payload
-                        break
-
-                    # Track closest option near $2.00 if ideal range isn't hit
-                    diff = abs(comb_odds - 2.00)
-                    if diff < closest_diff and comb_odds >= 1.40:
-                        closest_diff = diff
-                        closest_multi = multi_payload
-
-                if best_multi:
-                    break
-            if best_multi:
-                break
-
-        selected = best_multi if best_multi else closest_multi
-        if selected:
-            game_multis.append(selected)
+        if all_valid_combos:
+            # Pick the single best-scoring combination for the match
+            best_combo = max(all_valid_combos, key=lambda x: x["score"])
+            game_multis.append(best_combo)
 
     return game_multis
 
@@ -410,16 +414,16 @@ with tab_singles:
 
 with tab_multis:
     st.subheader("🏉 High-Confidence 3-Leg Same-Game Multis (~$2.00 Target Return)")
-    st.caption("Combines non-conflicting markets across Disposals, Head-to-Head, Margin, and Totals targeting ~$2.00 total payout:")
+    st.caption("Purely prioritizes top AI confidence and ~$2.00 payout across any combination of non-conflicting markets:")
     
-    multis = generate_realistic_multis(df, target_min_odds=1.70, target_max_odds=2.40)
+    multis = generate_realistic_multis(df, target_min_odds=1.60, target_max_odds=2.50)
     
     if multis:
         for multi in multis:
             with st.expander(f"📍 **{multi['Game']}** ({multi['Kickoff']}) — Combined Price: **{multi['Combined Odds']}**"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.write("**Compatible 3-Leg Selection:**")
+                    st.write("**Top AI Confidence Legs:**")
                     for leg in multi["Legs"]:
                         st.markdown(leg)
                 with col2:
