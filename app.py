@@ -4,7 +4,7 @@ import pandas as pd
 import streamlit as st
 
 # Page Configuration
-st.set_page_config(page_title="AFL High-Confidence Bet Finder", page_icon="🏉", layout="wide")
+st.set_page_config(page_title="AFL High-Confidence Safe Bet Finder", page_icon="🏉", layout="wide")
 
 # -------------------------------------------------------------------
 # Configuration & API Setup
@@ -74,7 +74,7 @@ def fetch_sportsbet_odds(api_key: str):
         return None, str(e)
 
 # -------------------------------------------------------------------
-# Matchup Probability Engine
+# Matchup Probability Engine (Outsourced Model Consensus)
 # -------------------------------------------------------------------
 def build_matchup_probabilities(tips_df):
     matchup_probs = {}
@@ -102,9 +102,9 @@ def build_matchup_probabilities(tips_df):
     return consensus_probs
 
 # -------------------------------------------------------------------
-# Processing Engine
+# Odds & Confidence Processing
 # -------------------------------------------------------------------
-def process_sportsbet_odds(odds_data, tips_df, min_odds, max_odds, min_win_prob, min_ev_pct):
+def process_sportsbet_odds(odds_data, tips_df, min_odds=1.20, max_odds=2.00, min_win_prob=60.0, min_ev_pct=0.5):
     rows = []
     matchup_model_probs = build_matchup_probabilities(tips_df)
 
@@ -135,7 +135,7 @@ def process_sportsbet_odds(odds_data, tips_df, min_odds, max_odds, min_win_prob,
                     if point is not None:
                         target_desc = f"{team_or_type} ({'+' if point > 0 else ''}{point})"
                     
-                    # Compute win probabilities
+                    # Estimate Model Win Probability from outsourced consensus
                     if mkt_key == "h2h":
                         if h_model_prob is not None:
                             if clean_target == home_clean:
@@ -149,29 +149,28 @@ def process_sportsbet_odds(odds_data, tips_df, min_odds, max_odds, min_win_prob,
                     else:
                         model_prob = 0.52
 
-                    # Calculate Expected Value
+                    # Expected Value calculation
                     ev = (model_prob * price) - 1.0
                     ev_pct = round(ev * 100, 1)
                     win_prob_pct = round(model_prob * 100, 1)
                     
-                    # Target strict evaluation criteria
+                    # Strict Criteria Checks
                     in_odds_range = (min_odds <= price <= max_odds)
                     meets_confidence = (win_prob_pct >= min_win_prob)
                     meets_ev = (ev_pct >= min_ev_pct)
 
                     is_strict_match = in_odds_range and meets_confidence and meets_ev
 
-                    # Proximity/Closeness metric for fallback ranking
-                    # Gives highest score to selections close to/inside target odds with strong win chance and EV
-                    odds_penalty = 0 if in_odds_range else min(abs(price - min_odds), abs(price - max_odds)) * 10
-                    closeness_score = (win_prob_pct * 0.6) + (ev_pct * 2.0) - odds_penalty
+                    # Ranking metric for nearest alternative recommendations
+                    odds_penalty = 0 if in_odds_range else min(abs(price - min_odds), abs(price - max_odds)) * 12
+                    closeness_score = (win_prob_pct * 0.7) + (ev_pct * 1.5) - odds_penalty
 
-                    # Status reason for near-miss explanation
+                    # Status explanation
                     reasons = []
                     if not in_odds_range:
-                        reasons.append(f"Odds ${price:.2f} outside ${min_odds:.2f}-${max_odds:.2f}")
+                        reasons.append(f"Odds ${price:.2f} out of range")
                     if not meets_confidence:
-                        reasons.append(f"Win Prob {win_prob_pct}% < {min_win_prob}%")
+                        reasons.append(f"AI Confidence {win_prob_pct}% < {min_win_prob}%")
                     if not meets_ev:
                         reasons.append(f"EV {ev_pct}% < {min_ev_pct}%")
                     
@@ -183,26 +182,26 @@ def process_sportsbet_odds(odds_data, tips_df, min_odds, max_odds, min_win_prob,
                         "Matchup": f"{home_clean} vs {away_clean}",
                         "Market": mkt_name,
                         "Selection": target_desc,
-                        "Odds": f"${price:.2f}",
+                        "Sportsbet Odds": f"${price:.2f}",
                         "Odds_raw": price,
-                        "Model Confidence": f"{win_prob_pct}%",
+                        "AI Win Prob": f"{win_prob_pct}%",
                         "Expected Value (EV)": f"{'+' if ev_pct > 0 else ''}{ev_pct}%",
                         "EV_raw": ev,
                         "win_prob_raw": win_prob_pct,
                         "is_strict_match": is_strict_match,
                         "closeness_score": closeness_score,
-                        "Status / Reason": status_note
+                        "Status Note": status_note
                     })
     
     return pd.DataFrame(rows)
 
 # -------------------------------------------------------------------
-# Dashboard UI
+# Dashboard Interface
 # -------------------------------------------------------------------
-st.title("🎯 AFL Safe Bet & High-Confidence Dashboard")
-st.caption("Filters Sportsbet odds for high-confidence favorites ($1.20 - $2.00) backed by Squiggle AI model consensus.")
+st.title("🎯 High-Confidence Safe Bet Finder ($1.20 - $2.00)")
+st.caption("Matches Sportsbet odds against outsourced AI consensus predictions from Squiggle.")
 
-st.sidebar.header("🎯 Safe Bet Parameters")
+st.sidebar.header("🎯 Target Model Rules")
 
 if st.sidebar.button("🔄 Force Refresh Data"):
     st.cache_data.clear()
@@ -210,29 +209,21 @@ if st.sidebar.button("🔄 Force Refresh Data"):
 
 st.sidebar.markdown("---")
 
-# Odds Window Selector
-odds_range = st.sidebar.slider(
-    "Target Odds Window ($)",
-    min_value=1.05, max_value=3.00, value=(1.20, 2.00), step=0.05,
-    help="Limits selections to safe favorite odds."
-)
-
 min_win_prob = st.sidebar.slider(
-    "Min AI Model Confidence (%)", 
+    "Min AI Confidence (%)", 
     min_value=50, max_value=85, value=60, step=5,
-    help="Ensures the model predicts a strong likelihood of winning."
+    help="Target minimum winning probability from outsourced models."
 )
 
 min_ev_pct = st.sidebar.slider(
     "Min Expected Value (+EV %)", 
-    min_value=0.0, max_value=10.0, value=1.0, step=0.5,
-    help="Ensures you get positive mathematical value."
+    min_value=0.0, max_value=10.0, value=0.5, step=0.5,
+    help="Requires a positive mathematical return."
 )
 
 st.sidebar.markdown("---")
 
-# Fetch Data
-with st.spinner("Fetching Sportsbet odds and AI consensus models..."):
+with st.spinner("Fetching Sportsbet odds & outsourced model data..."):
     odds_raw, odds_err = fetch_sportsbet_odds(API_KEY)
     tips_df, tips_err = fetch_squiggle_tips(year=2026)
 
@@ -241,13 +232,13 @@ if odds_err:
     st.stop()
 
 if not odds_raw:
-    st.warning("No Sportsbet odds currently available.")
+    st.warning("No Sportsbet odds available right now.")
     st.stop()
 
-# Process Odds
+# Generate results
 df = process_sportsbet_odds(
     odds_raw, tips_df, 
-    min_odds=odds_range[0], max_odds=odds_range[1], 
+    min_odds=1.20, max_odds=2.00, 
     min_win_prob=min_win_prob, min_ev_pct=min_ev_pct
 )
 
@@ -255,17 +246,16 @@ if not df.empty:
     strict_df = df[df["is_strict_match"]].sort_values(by=["commence_dt", "EV_raw"], ascending=[True, False])
     
     if not strict_df.empty:
-        st.success(f" Found {len(strict_df)} High-Confidence Value Bet(s) matching all target rules!")
+        st.success(f" Found {len(strict_df)} High-Confidence Value Bet(s) in the $1.20 - $2.00 range!")
         display_df = strict_df.drop(columns=["commence_dt", "EV_raw", "win_prob_raw", "Odds_raw", "is_strict_match", "closeness_score"])
         st.dataframe(display_df, use_container_width=True)
     else:
-        st.info(f"💡 No bets currently match **ALL** strict rules (${odds_range[0]:.2f}-${odds_range[1]:.2f} odds + {min_win_prob}% confidence + +{min_ev_pct}% EV).")
-        st.subheader("🔍 Closest Candidate Bets On The Slate")
-        st.caption("Here are the top candidates that came closest to your criteria, sorted by AI model confidence & EV:")
+        st.info("💡 No bets currently match all strict rules ($1.20–$2.00 odds + high AI win confidence + positive EV).")
+        st.subheader("🔍 Top Closest Candidates On The Slate")
+        st.caption("Ranked by highest outsourced AI confidence and closest proximity to your $1.20–$2.00 criteria:")
         
-        # Fallback: Sort by closeness_score & EV
         closest_df = df.sort_values(by=["closeness_score", "EV_raw"], ascending=[False, False]).head(5)
         display_closest = closest_df.drop(columns=["commence_dt", "EV_raw", "win_prob_raw", "Odds_raw", "is_strict_match", "closeness_score"])
         st.dataframe(display_closest, use_container_width=True)
 else:
-    st.info("No odds available.")
+    st.info("No odds data returned.")
