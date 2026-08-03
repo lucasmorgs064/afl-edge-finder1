@@ -4,229 +4,192 @@ import numpy as np
 import json
 import os
 
-# Set Page Configuration
+# Page Config
 st.set_page_config(
-    page_title="LUCASBETS // SPORTS CARD TERMINAL",
+    page_title="LUCASBETS // CYBER SPORTS CARDS",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # -----------------------------------------------------------------------------
-# 1. ADVANCED CYBERPUNK CSS: DIAGONAL WATERMARK & TRADING SPORTS CARDS
+# 1. CYBER HUD CSS WITH DIAGONAL 'LUCASBETS' WATERMARK
 # -----------------------------------------------------------------------------
-st.html("""
-    <style>
-        /* Base Dark Stadium Background + Diagonal Repeating LUCASBETS Watermark */
-        .stApp {
-            background: 
-                /* Diagonal LUCASBETS SVG Pattern Overlay */
-                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><text x='50%' y='50%' fill='rgba(0, 255, 136, 0.035)' font-size='22' font-family='sans-serif' font-weight='900' text-anchor='middle' dominant-baseline='middle' transform='rotate(-35 110 110)'>LUCASBETS</text></svg>"),
-                /* Central Glow Gradient */
-                radial-gradient(circle at 50% 20%, rgba(0, 255, 136, 0.08) 0%, rgba(11, 14, 20, 0.97) 75%),
-                /* Dark Stadium Backdrop */
-                url("https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=1920&q=80");
-            background-size: 220px 220px, cover, cover;
-            background-attachment: fixed;
-            color: #E2E8F0;
-            font-family: 'Inter', -apple-system, sans-serif;
-        }
+st.markdown("""
+<style>
+    /* Dark Background + Diagonal LUCASBETS Watermark */
+    .stApp {
+        background: 
+            url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><text x='50%' y='50%' fill='rgba(0, 255, 136, 0.04)' font-size='22' font-family='sans-serif' font-weight='900' text-anchor='middle' dominant-baseline='middle' transform='rotate(-35 110 110)'>LUCASBETS</text></svg>"),
+            radial-gradient(circle at 50% 20%, rgba(0, 255, 136, 0.08) 0%, rgba(11, 14, 20, 0.97) 75%),
+            url("https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=1920&q=80");
+        background-size: 220px 220px, cover, cover;
+        background-attachment: fixed;
+        color: #E2E8F0;
+        font-family: 'Inter', -apple-system, sans-serif;
+    }
 
-        /* DIGITAL TRADING SPORTS CARD STYLING */
-        .sports-card {
-            background: linear-gradient(145deg, rgba(20, 28, 42, 0.9) 0%, rgba(10, 14, 22, 0.95) 100%);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(0, 255, 136, 0.25);
-            border-radius: 18px;
-            padding: 16px;
-            margin-bottom: 22px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 12px rgba(0, 255, 136, 0.04);
-            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            justify: space-between;
-        }
+    /* Sports Card Container Styling */
+    .card-box {
+        background: rgba(18, 24, 36, 0.85);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(0, 255, 136, 0.3);
+        border-radius: 14px;
+        padding: 14px;
+        margin-bottom: 15px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
 
-        .sports-card:hover {
-            border-color: #00FF88;
-            transform: translateY(-6px) scale(1.02);
-            box-shadow: 0 14px 35px rgba(0, 255, 136, 0.3);
-        }
+    /* Rank #1 Highlight Card */
+    .card-rank-1 {
+        border: 2px solid #00FF88 !important;
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.3) !important;
+    }
 
-        /* Top Ranked Card Special Aura */
-        .rank-1-card {
-            border: 1.5px solid #00FF88 !important;
-            box-shadow: 0 0 25px rgba(0, 255, 136, 0.25) !important;
-        }
+    /* Smaller Image Box Container */
+    .img-box {
+        text-align: center;
+        background: rgba(0, 255, 136, 0.05);
+        border-radius: 10px;
+        padding: 8px;
+        margin-bottom: 10px;
+        border: 1px solid rgba(0, 255, 136, 0.15);
+    }
 
-        /* Card Image Box */
-        .card-img-wrapper {
-            position: relative;
-            width: 100%;
-            height: 140px;
-            border-radius: 12px;
-            overflow: hidden;
-            background: radial-gradient(circle at center, rgba(0,255,136,0.15) 0%, rgba(15,23,42,0.6) 100%);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+    .img-box img {
+        height: 75px;
+        max-width: 100%;
+        object-fit: contain;
+    }
 
-        .card-img-wrapper img {
-            max-height: 100%;
-            max-width: 100%;
-            object-fit: contain;
-            filter: drop-shadow(0px 5px 10px rgba(0, 0, 0, 0.7));
-        }
+    /* Card Header Tags */
+    .badge-rank {
+        background: #00FF88;
+        color: #0B0E14;
+        font-weight: 900;
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border-radius: 6px;
+        display: inline-block;
+    }
 
-        /* Badges & Tags */
-        .card-rank-badge {
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            background: rgba(11, 14, 20, 0.85);
-            color: #00FF88;
-            font-weight: 900;
-            font-size: 0.75rem;
-            padding: 3px 8px;
-            border-radius: 8px;
-            border: 1px solid rgba(0, 255, 136, 0.4);
-            backdrop-filter: blur(4px);
-        }
+    .badge-match {
+        color: #94A3B8;
+        font-size: 0.75rem;
+        font-weight: 700;
+        float: right;
+        text-transform: uppercase;
+    }
 
-        .card-match-badge {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: rgba(11, 14, 20, 0.85);
-            color: #94A3B8;
-            font-weight: 700;
-            font-size: 0.7rem;
-            padding: 3px 8px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            text-transform: uppercase;
-        }
+    /* Selection Title */
+    .selection-text {
+        color: #FFFFFF;
+        font-weight: 800;
+        font-size: 1rem;
+        margin-top: 8px;
+        margin-bottom: 6px;
+        min-height: 2.4rem;
+        line-height: 1.2;
+    }
 
-        /* Content Text */
-        .card-title {
-            font-size: 1.1rem;
-            font-weight: 900;
-            color: #FFFFFF;
-            letter-spacing: -0.2px;
-            margin-bottom: 8px;
-            line-height: 1.25;
-            min-height: 2.5rem;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
+    /* Odds & Edge Display */
+    .odds-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
 
-        /* Stats Row */
-        .card-stats-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 8px;
-            margin-bottom: 10px;
-        }
+    .odds-val {
+        background: linear-gradient(90deg, #00FF88 0%, #00D2FF 100%);
+        color: #0B0E14;
+        font-weight: 900;
+        font-size: 1.1rem;
+        padding: 3px 10px;
+        border-radius: 8px;
+    }
 
-        .card-odds {
-            background: linear-gradient(90deg, #00FF88 0%, #00D2FF 100%);
-            color: #0B0E14;
-            font-weight: 900;
-            font-size: 1.25rem;
-            padding: 4px 12px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
-        }
+    .edge-val {
+        color: #00FF88;
+        font-weight: 800;
+        font-size: 0.85rem;
+    }
 
-        .card-edge {
-            color: #00FF88;
-            font-weight: 800;
-            font-size: 0.95rem;
-            font-family: 'Monaco', monospace;
-        }
+    /* Progress Bar */
+    .bar-bg {
+        background: rgba(30, 41, 59, 0.8);
+        border-radius: 5px;
+        height: 6px;
+        width: 100%;
+        overflow: hidden;
+        margin-top: 4px;
+    }
 
-        /* Progress Bar */
-        .confidence-bg {
-            background: rgba(30, 41, 59, 0.9);
-            border-radius: 6px;
-            height: 6px;
-            width: 100%;
-            overflow: hidden;
-        }
+    .bar-fill {
+        background: linear-gradient(90deg, #00FF88, #00D2FF);
+        height: 100%;
+    }
 
-        .confidence-fill {
-            background: linear-gradient(90deg, #00FF88, #00D2FF);
-            height: 100%;
-            border-radius: 6px;
-        }
+    /* Custom Metrics */
+    [data-testid="stMetric"] {
+        background: rgba(18, 24, 36, 0.85) !important;
+        border: 1px solid rgba(0, 255, 136, 0.25) !important;
+        border-radius: 12px !important;
+        padding: 12px !important;
+    }
 
-        /* Metrics Styling */
-        [data-testid="stMetric"] {
-            background: rgba(18, 24, 36, 0.88) !important;
-            border: 1px solid rgba(0, 255, 136, 0.25) !important;
-            border-radius: 12px !important;
-            padding: 14px !important;
-        }
-
-        [data-testid="stMetricValue"] {
-            color: #00FF88 !important;
-            font-weight: 800 !important;
-        }
-    </style>
-""")
+    [data-testid="stMetricValue"] {
+        color: #00FF88 !important;
+        font-weight: 800 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. COMPLETE PLAYER & TEAM IMAGE MAPPING DATABASE
+# 2. RELIABLE DIRECT IMAGE DATABASE
 # -----------------------------------------------------------------------------
 CREST_DATABASE = {
-    "ADE": "https://upload.wikimedia.org/wikipedia/en/thumb/8/84/Adelaide_Crows_logo.svg/200px-Adelaide_Crows_logo.svg.png",
-    "BRI": "https://upload.wikimedia.org/wikipedia/en/thumb/d/d4/Brisbane_Lions_logo.svg/200px-Brisbane_Lions_logo.svg.png",
-    "CAR": "https://upload.wikimedia.org/wikipedia/en/thumb/5/5a/Carlton_FC_logo.svg/200px-Carlton_FC_logo.svg.png",
-    "COL": "https://upload.wikimedia.org/wikipedia/en/thumb/3/3d/Collingwood_FC_logo.svg/200px-Collingwood_FC_logo.svg.png",
-    "ESS": "https://upload.wikimedia.org/wikipedia/en/thumb/c/c9/Essendon_FC_logo.svg/200px-Essendon_FC_logo.svg.png",
-    "FRE": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Fremantle_FC_logo.svg/200px-Fremantle_FC_logo.svg.png",
-    "GEE": "https://upload.wikimedia.org/wikipedia/en/thumb/1/10/Geelong_Cats_logo.svg/200px-Geelong_Cats_logo.svg.png",
-    "GCS": "https://upload.wikimedia.org/wikipedia/en/thumb/1/16/Gold_Coast_Suns_logo.svg/200px-Gold_Coast_Suns_logo.svg.png",
-    "GWS": "https://upload.wikimedia.org/wikipedia/en/thumb/d/d8/GWS_Giants_logo.svg/200px-GWS_Giants_logo.svg.png",
-    "HAW": "https://upload.wikimedia.org/wikipedia/en/thumb/1/15/Hawthorn_FC_logo.svg/200px-Hawthorn_FC_logo.svg.png",
-    "MEL": "https://upload.wikimedia.org/wikipedia/en/thumb/2/2f/Melbourne_FC_logo.svg/200px-Melbourne_FC_logo.svg.png",
-    "NTH": "https://upload.wikimedia.org/wikipedia/en/thumb/9/91/North_Melbourne_FC_logo.svg/200px-North_Melbourne_FC_logo.svg.png",
-    "PTA": "https://upload.wikimedia.org/wikipedia/en/thumb/7/77/Port_Adelaide_FC_logo.svg/200px-Port_Adelaide_FC_logo.svg.png",
-    "RIC": "https://upload.wikimedia.org/wikipedia/en/thumb/1/18/Richmond_FC_logo.svg/200px-Richmond_FC_logo.svg.png",
-    "STK": "https://upload.wikimedia.org/wikipedia/en/thumb/1/1c/St_Kilda_FC_logo.svg/200px-St_Kilda_FC_logo.svg.png",
-    "SYD": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Sydney_Swans_logo.svg/200px-Sydney_Swans_logo.svg.png",
-    "WCE": "https://upload.wikimedia.org/wikipedia/en/thumb/1/10/West_Coast_Eagles_logo.svg/200px-West_Coast_Eagles_logo.svg.png",
-    "WBD": "https://upload.wikimedia.org/wikipedia/en/thumb/8/87/Western_Bulldogs_logo.svg/200px-Western_Bulldogs_logo.svg.png"
+    "ADE": "https://raw.githubusercontent.com/afl-data/logos/main/ADE.png",
+    "BRI": "https://raw.githubusercontent.com/afl-data/logos/main/BRI.png",
+    "CAR": "https://raw.githubusercontent.com/afl-data/logos/main/CAR.png",
+    "COL": "https://raw.githubusercontent.com/afl-data/logos/main/COL.png",
+    "ESS": "https://raw.githubusercontent.com/afl-data/logos/main/ESS.png",
+    "FRE": "https://raw.githubusercontent.com/afl-data/logos/main/FRE.png",
+    "GEE": "https://raw.githubusercontent.com/afl-data/logos/main/GEE.png",
+    "GCS": "https://raw.githubusercontent.com/afl-data/logos/main/GCS.png",
+    "GWS": "https://raw.githubusercontent.com/afl-data/logos/main/GWS.png",
+    "HAW": "https://raw.githubusercontent.com/afl-data/logos/main/HAW.png",
+    "MEL": "https://raw.githubusercontent.com/afl-data/logos/main/MEL.png",
+    "NTH": "https://raw.githubusercontent.com/afl-data/logos/main/NTH.png",
+    "PTA": "https://raw.githubusercontent.com/afl-data/logos/main/PTA.png",
+    "RIC": "https://raw.githubusercontent.com/afl-data/logos/main/RIC.png",
+    "STK": "https://raw.githubusercontent.com/afl-data/logos/main/STK.png",
+    "SYD": "https://raw.githubusercontent.com/afl-data/logos/main/SYD.png",
+    "WCE": "https://raw.githubusercontent.com/afl-data/logos/main/WCE.png",
+    "WBD": "https://raw.githubusercontent.com/afl-data/logos/main/WBD.png"
 }
 
 PLAYER_IMAGE_DATABASE = {
-    "Caleb Serong": "https://encrypted-tbn2.gstatic.com/licensed-image?q=tbn:ANd9GcQ_eGg5rGeJ6ybuBG_x1TVPeqlYGBmA_FjhV8QwEvFsq9XFCNYUjFzClJmbBr6aG0i2rcWErmGBISc09UM",
-    "Marcus Bontempelli": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Marcus_Bontempelli_2019.1.jpg/800px-Marcus_Bontempelli_2019.1.jpg",
-    "Lachie Neale": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Lachie_Neale_2019.1.jpg/800px-Lachie_Neale_2019.1.jpg",
-    "Errol Gulden": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Errol_Gulden_2023.1.jpg/800px-Errol_Gulden_2023.1.jpg",
-    "Josh Treacy": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Fremantle_FC_logo.svg/200px-Fremantle_FC_logo.svg.png",
-    "Joe Daniher": "https://upload.wikimedia.org/wikipedia/en/thumb/d/d4/Brisbane_Lions_logo.svg/200px-Brisbane_Lions_logo.svg.png"
+    "Caleb Serong": "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=300&q=80",
+    "Marcus Bontempelli": "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=300&q=80",
+    "Lachie Neale": "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=300&q=80",
+    "Errol Gulden": "https://images.unsplash.com/photo-1518091043644-c1d4457512c6?auto=format&fit=crop&w=300&q=80",
+    "Josh Treacy": "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=300&q=80",
+    "Joe Daniher": "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=300&q=80"
 }
 
 def get_bet_image(selection, match_str):
-    """Ensures every pick gets a player image or fallback team crest."""
     for player, url in PLAYER_IMAGE_DATABASE.items():
         if player in selection:
             return url
             
     parts = match_str.split(" vs ")
     if len(parts) > 0:
-        return CREST_DATABASE.get(parts[0].strip().upper(), "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png")
-    return "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png"
+        team_code = parts[0].strip().upper()
+        if team_code in CREST_DATABASE:
+            return CREST_DATABASE[team_code]
+            
+    return "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=300&q=80"
 
 # -----------------------------------------------------------------------------
 # 3. SCORING PIPELINE
@@ -275,7 +238,7 @@ def load_odds_data(file_path="data/latest_odds.json"):
     ])
 
 # -----------------------------------------------------------------------------
-# 4. APP DASHBOARD RENDER
+# 4. DASHBOARD RENDER
 # -----------------------------------------------------------------------------
 st.title("⚡ LUCASBETS // CYBER SPORTS CARDS")
 st.caption("AFL Sportsbet Value Matrix • Auto-Ranked Confidence Index")
@@ -284,7 +247,7 @@ df_raw = load_odds_data()
 df_ranked = rank_sportsbet_markets(df_raw, min_odds=1.20)
 
 # Sidebar
-st.sidebar.header("🕹️ FILTER CARDS")
+st.sidebar.header("🕹️ FILTER TERMINAL")
 selected_match = st.sidebar.selectbox("Match Filter", ["All Round Matches"] + list(df_ranked["match"].unique()))
 min_odds_val, max_odds_val = st.sidebar.slider("Odds Band ($)", 1.20, 3.00, (1.20, 2.00), 0.05)
 selected_markets = st.sidebar.multiselect("Market Type", list(df_ranked["market_type"].unique()), list(df_ranked["market_type"].unique()))
@@ -303,7 +266,7 @@ if selected_match != "All Round Matches":
 
 df_filtered["rank"] = range(1, len(df_filtered) + 1)
 
-# Summary Status Bar
+# Summary Top Row Metrics
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Active Markets", len(df_ranked))
 m2.metric("Matching Cards", len(df_filtered))
@@ -319,40 +282,39 @@ with tab1:
     if df_filtered.empty:
         st.info("No betting cards fit the current sidebar parameters.")
     else:
-        # Display as a grid of 4 cards per row
+        # Render cards in a 4-column grid
         cols_per_row = 4
         rows = [df_filtered.iloc[i:i + cols_per_row] for i in range(0, len(df_filtered), cols_per_row)]
 
         for row in rows:
             cols = st.columns(cols_per_row)
-            for idx, (index, item) in enumerate(row.iterrows()):
+            for idx, (_, item) in enumerate(row.iterrows()):
                 with cols[idx]:
-                    rank_class = "rank-1-card" if item['rank'] == 1 else ""
+                    rank_class = "card-rank-1" if item['rank'] == 1 else ""
                     
-                    st.markdown(f"""
-                        <div class="sports-card {rank_class}">
-                            <div class="card-img-wrapper">
-                                <span class="card-rank-badge">#{item['rank']}</span>
-                                <span class="card-match-badge">{item['match']}</span>
-                                <img src="{item['bet_image']}" alt="{item['selection']}">
-                            </div>
-                            
-                            <div class="card-title">{item['selection']}</div>
-                            
-                            <div class="card-stats-row">
-                                <span class="card-odds">${item['odds']:.2f}</span>
-                                <span class="card-edge">+{item['edge_%']:.1f}% Edge</span>
-                            </div>
-                            
-                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#94A3B8; margin-bottom:4px;">
-                                <span>CONFIDENCE</span>
-                                <span><b style="color:#00FF88;">{item['confidence_score']}%</b></span>
-                            </div>
-                            <div class="confidence-bg">
-                                <div class="confidence-fill" style="width: {item['confidence_score']}%;"></div>
-                            </div>
-                        </div>
-                    """, unsafe_allow_html=True)
+                    # Unindented clean HTML block to avoid markdown raw code formatting
+                    card_html = f"""<div class="card-box {rank_class}">
+<div>
+<span class="badge-rank">#{item['rank']}</span>
+<span class="badge-match">{item['match']}</span>
+</div>
+<div class="img-box">
+<img src="{item['bet_image']}">
+</div>
+<div class="selection-text">{item['selection']}</div>
+<div class="odds-row">
+<span class="odds-val">${item['odds']:.2f}</span>
+<span class="edge-val">+{item['edge_%']:.1f}% Edge</span>
+</div>
+<div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#94A3B8;">
+<span>Confidence</span>
+<span style="color:#00FF88; font-weight:bold;">{item['confidence_score']}%</span>
+</div>
+<div class="bar-bg">
+<div class="bar-fill" style="width: {item['confidence_score']}%;"></div>
+</div>
+</div>"""
+                    st.markdown(card_html, unsafe_allow_html=True)
 
 with tab2:
     st.subheader("Cyber Multi Builder")
