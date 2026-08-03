@@ -4,96 +4,107 @@ import numpy as np
 import json
 import os
 
-# Set page configuration with dark theme default
+# Page Config
 st.set_page_config(
-    page_title="AFL CyberEdge // Value Analytics",
+    page_title="AFL CYBER-HUD // COMMAND CENTER",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # -----------------------------------------------------------------------------
-# 1. Futuristic Cyberpunk CSS Theme Injection
+# 1. NEXT-GEN CYBERPUNK HUD CSS WITH AFL STADIUM BACKGROUND & OVAL GRID
 # -----------------------------------------------------------------------------
 st.html("""
     <style>
+        /* Dark Cyber Stadium Background with Subtle AFL Oval Field Grid Pattern */
         .stApp {
-            background-color: #0B0E14;
+            background: 
+                radial-gradient(circle at 50% 20%, rgba(0, 255, 136, 0.08) 0%, rgba(11, 14, 20, 0.95) 70%),
+                url("https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=1920&q=80");
+            background-size: cover;
+            background-attachment: fixed;
             color: #E2E8F0;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-        
-        h1, h2, h3 {
-            color: #00FF88 !important;
-            font-weight: 800 !important;
-            letter-spacing: -0.5px;
-            text-transform: uppercase;
+            font-family: 'Inter', -apple-system, sans-serif;
         }
 
-        .hero-card {
-            background: linear-gradient(135deg, rgba(0, 255, 136, 0.1) 0%, rgba(14, 23, 38, 0.9) 100%);
-            border: 1px solid #00FF88;
+        /* Glassmorphism Containers with Neon Glow Borders */
+        .hud-card {
+            background: rgba(18, 24, 36, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 255, 136, 0.25);
             border-radius: 16px;
             padding: 24px;
-            box-shadow: 0 0 25px rgba(0, 255, 136, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(0, 255, 136, 0.05);
             margin-bottom: 25px;
+            position: relative;
+            overflow: hidden;
         }
 
-        .hero-badge {
-            background: #00FF88;
+        /* Hero Pulse Highlight for Top-Ranked Pick */
+        .hero-pulse {
+            border: 1px solid #00FF88 !important;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.25), inset 0 0 20px rgba(0, 255, 136, 0.1) !important;
+            animation: pulse-glow 3s infinite alternate;
+        }
+
+        @keyframes pulse-glow {
+            0% { border-color: rgba(0, 255, 136, 0.4); box-shadow: 0 0 15px rgba(0, 255, 136, 0.2); }
+            100% { border-color: rgba(0, 255, 136, 1.0); box-shadow: 0 0 35px rgba(0, 255, 136, 0.4); }
+        }
+
+        /* Futuristic HUD Badge */
+        .hud-badge {
+            background: linear-gradient(90deg, #00FF88 0%, #00D2FF 100%);
             color: #0B0E14;
             font-weight: 900;
-            padding: 4px 12px;
+            padding: 4px 14px;
             border-radius: 20px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
             text-transform: uppercase;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
         }
 
+        /* Custom Metrics Styling */
         [data-testid="stMetric"] {
-            background: #121824;
-            border: 1px solid #1E293B;
-            border-radius: 12px;
-            padding: 16px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            transition: transform 0.2s ease, border-color 0.2s ease;
-        }
-        
-        [data-testid="stMetric"]:hover {
-            border-color: #00FF88;
-            transform: translateY(-2px);
-        }
-
-        [data-testid="stMetricLabel"] {
-            color: #94A3B8 !important;
-            font-size: 0.85rem !important;
-            text-transform: uppercase;
+            background: rgba(18, 24, 36, 0.85) !important;
+            border: 1px solid rgba(0, 255, 136, 0.2) !important;
+            border-radius: 12px !important;
+            padding: 16px !important;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
         }
 
         [data-testid="stMetricValue"] {
             color: #00FF88 !important;
-            font-weight: 700 !important;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-weight: 800 !important;
         }
 
+        /* Custom Table HUD Frame */
         .stDataFrame {
-            border: 1px solid #1E293B;
-            border-radius: 12px;
-            overflow: hidden;
-            background: #121824;
+            border: 1px solid rgba(0, 255, 136, 0.3) !important;
+            border-radius: 12px !important;
+            background: rgba(11, 14, 20, 0.85) !important;
+            backdrop-filter: blur(8px) !important;
         }
 
-        .sgm-leg-card {
-            background: #121824;
-            border-left: 4px solid #00FF88;
-            padding: 14px 18px;
-            border-radius: 8px;
-            margin-bottom: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        /* Cyber Button / Accent Styling */
+        .stButton>button {
+            background: linear-gradient(90deg, #00FF88 0%, #00D2FF 100%) !important;
+            color: #0B0E14 !important;
+            font-weight: 800 !important;
+            border: none !important;
+            border-radius: 8px !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1px !important;
         }
     </style>
 """)
 
 # -----------------------------------------------------------------------------
-# 2. Team Crest URL Mapping
+# 2. Team Crest & Player Image Database
 # -----------------------------------------------------------------------------
 CREST_DATABASE = {
     "ADE": "https://upload.wikimedia.org/wikipedia/en/thumb/8/84/Adelaide_Crows_logo.svg/200px-Adelaide_Crows_logo.svg.png",
@@ -116,16 +127,27 @@ CREST_DATABASE = {
     "WBD": "https://upload.wikimedia.org/wikipedia/en/thumb/8/87/Western_Bulldogs_logo.svg/200px-Western_Bulldogs_logo.svg.png"
 }
 
-def get_match_crest_url(match_string):
-    """Extracts home team code from 'HOME vs AWAY' and returns crest logo URL."""
-    parts = match_string.split(" vs ")
+IMAGE_DATABASE = {
+    "Caleb Serong": "https://encrypted-tbn2.gstatic.com/licensed-image?q=tbn:ANd9GcQ_eGg5rGeJ6ybuBG_x1TVPeqlYGBmA_FjhV8QwEvFsq9XFCNYUjFzClJmbBr6aG0i2rcWErmGBISc09UM",
+    "Marcus Bontempelli": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Marcus_Bontempelli_2019.1.jpg/800px-Marcus_Bontempelli_2019.1.jpg",
+    "Fremantle": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Fremantle_FC_logo.svg/1200px-Fremantle_FC_logo.svg.png",
+    "Western Bulldogs": "https://upload.wikimedia.org/wikipedia/en/thumb/8/87/Western_Bulldogs_logo.svg/1200px-Western_Bulldogs_logo.svg.png"
+}
+
+def get_crest_url(match_str):
+    parts = match_str.split(" vs ")
     if len(parts) > 0:
-        team_code = parts[0].strip().upper()
-        return CREST_DATABASE.get(team_code, "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png")
+        return CREST_DATABASE.get(parts[0].strip().upper(), "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png")
     return "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png"
 
+def get_hero_img(selection):
+    for entity, url in IMAGE_DATABASE.items():
+        if entity in selection:
+            return url
+    return "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=800&q=80"
+
 # -----------------------------------------------------------------------------
-# 3. Ranking & Scoring Logic
+# 3. Model Scoring Pipeline
 # -----------------------------------------------------------------------------
 def calculate_implied_prob(odds):
     return 1 / odds if odds > 0 else 0
@@ -147,84 +169,47 @@ def rank_sportsbet_markets(markets_df, min_odds=1.20):
     df['implied_prob'] = df['odds'].apply(calculate_implied_prob)
     df['edge_%'] = ((df['projected_prob'] - df['implied_prob']) * 100).round(2)
     df['confidence_score'] = df.apply(calculate_confidence_score, axis=1)
-    df['crest_url'] = df['match'].apply(get_match_crest_url)
+    df['crest_url'] = df['match'].apply(get_crest_url)
     df = df.sort_values(by=['confidence_score', 'edge_%'], ascending=[False, False])
     return df
 
-# Hero Image Database Mapping
-IMAGE_DATABASE = {
-    "Caleb Serong": "https://encrypted-tbn2.gstatic.com/licensed-image?q=tbn:ANd9GcQ_eGg5rGeJ6ybuBG_x1TVPeqlYGBmA_FjhV8QwEvFsq9XFCNYUjFzClJmbBr6aG0i2rcWErmGBISc09UM",
-    "Marcus Bontempelli": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Marcus_Bontempelli_2019.1.jpg/800px-Marcus_Bontempelli_2019.1.jpg",
-    "Fremantle": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Fremantle_FC_logo.svg/1200px-Fremantle_FC_logo.svg.png",
-    "Western Bulldogs": "https://upload.wikimedia.org/wikipedia/en/thumb/8/87/Western_Bulldogs_logo.svg/1200px-Western_Bulldogs_logo.svg.png"
-}
-
-def get_image_for_bet(selection, market_type):
-    for entity, url in IMAGE_DATABASE.items():
-        if entity in selection:
-            return url
-    return "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=800&q=80"
-
-# -----------------------------------------------------------------------------
-# 4. Data Loader Function
-# -----------------------------------------------------------------------------
+# Data Loader
 @st.cache_data(ttl=300)
 def load_odds_data(file_path="data/latest_odds.json"):
     if os.path.exists(file_path):
         try:
             with open(file_path, "r") as f:
-                data = json.load(f)
-            return pd.DataFrame(data)
+                return pd.DataFrame(json.load(f))
         except Exception:
             pass
             
-    mock_data = [
+    # Mock Current Round Data
+    return pd.DataFrame([
         {"round": 22, "match": "MEL vs FRE", "market_type": "Player Disposals", "selection": "Caleb Serong 25+ Disposals", "odds": 1.28, "projected_prob": 0.85, "hit_rate_l10": 0.90, "matchup_factor": 1.10},
         {"round": 22, "match": "WBD vs NTH", "market_type": "Player Disposals", "selection": "Marcus Bontempelli 25+ Disposals", "odds": 1.30, "projected_prob": 0.82, "hit_rate_l10": 0.85, "matchup_factor": 1.10},
         {"round": 22, "match": "MEL vs FRE", "market_type": "Total Goals", "selection": "Josh Treacy 2+ Goals", "odds": 1.40, "projected_prob": 0.77, "hit_rate_l10": 0.80, "matchup_factor": 1.15},
         {"round": 22, "match": "MEL vs FRE", "market_type": "Head to Head", "selection": "Fremantle Win", "odds": 1.45, "projected_prob": 0.73, "hit_rate_l10": 0.75, "matchup_factor": 1.00},
         {"round": 22, "match": "BRI vs HAW", "market_type": "Player Disposals", "selection": "Lachie Neale 25+ Disposals", "odds": 1.35, "projected_prob": 0.80, "hit_rate_l10": 0.80, "matchup_factor": 1.05},
         {"round": 22, "match": "SYD vs PTA", "market_type": "Player Disposals", "selection": "Errol Gulden 25+ Disposals", "odds": 1.38, "projected_prob": 0.78, "hit_rate_l10": 0.80, "matchup_factor": 1.00},
-    ]
-    return pd.DataFrame(mock_data)
+    ])
 
 # -----------------------------------------------------------------------------
-# 5. Main App Rendering
+# 4. App UI Engine
 # -----------------------------------------------------------------------------
-st.title("⚡ AFL CYBEREDGE // VALUE ENGINE")
-st.caption("AI-Powered Confidence Ranking Terminal • Sportsbet AFL Markets $\\ge \\$1.20$")
+st.title("⚡ AFL CYBER-HUD // COMMAND CENTER")
+st.caption("Quantum Value Analytics Engine • Sportsbet Active Markets $\\ge \\$1.20$")
 
 df_raw = load_odds_data()
 df_ranked = rank_sportsbet_markets(df_raw, min_odds=1.20)
 
-# Sidebar Controls
-st.sidebar.header("🕹️ TERMINAL CONTROLS")
-available_matches = ["All Round Matches"] + list(df_ranked["match"].unique())
-selected_match = st.sidebar.selectbox("Match Filter", available_matches)
+# Sidebar
+st.sidebar.header("🕹️ HUD PARAMETERS")
+selected_match = st.sidebar.selectbox("Match Select", ["All Round Matches"] + list(df_ranked["match"].unique()))
+min_odds_val, max_odds_val = st.sidebar.slider("Odds Band ($)", 1.20, 3.00, (1.20, 2.00), 0.05)
+selected_markets = st.sidebar.multiselect("Market Categories", list(df_ranked["market_type"].unique()), list(df_ranked["market_type"].unique()))
+min_conf_score = st.sidebar.slider("Min Confidence Index (%)", 50.0, 95.0, 65.0, 1.0)
 
-min_odds_val, max_odds_val = st.sidebar.slider(
-    "Odds Range ($)",
-    min_value=1.20,
-    max_value=3.00,
-    value=(1.20, 2.00),
-    step=0.05
-)
-
-selected_markets = st.sidebar.multiselect(
-    "Market Filter",
-    options=list(df_ranked["market_type"].unique()),
-    default=list(df_ranked["market_type"].unique())
-)
-
-min_conf_score = st.sidebar.slider(
-    "Min Confidence Threshold (%)",
-    min_value=50.0,
-    max_value=95.0,
-    value=65.0,
-    step=1.0
-)
-
-# Apply Filters
+# Filtering
 df_filtered = df_ranked[
     (df_ranked["odds"] >= min_odds_val) &
     (df_ranked["odds"] <= max_odds_val) &
@@ -237,60 +222,53 @@ if selected_match != "All Round Matches":
 
 df_filtered["rank"] = range(1, len(df_filtered) + 1)
 
-# --- TOP PICK HERO HIGHLIGHT SECTION ---
+# --- HERO PICK (APPLY PULSE EFFECT) ---
 if not df_filtered.empty:
-    top_bet = df_filtered.iloc[0]
-    top_img_url = get_image_for_bet(top_bet['selection'], top_bet['market_type'])
+    top = df_filtered.iloc[0]
+    hero_img = get_hero_img(top['selection'])
     
-    st.markdown('<div class="hero-card">', unsafe_allow_html=True)
+    st.markdown('<div class="hud-card hero-pulse">', unsafe_allow_html=True)
     c1, c2 = st.columns([1, 2.5])
-    
     with c1:
-        st.image(top_img_url, use_container_width=True)
-        
+        st.image(hero_img, use_container_width=True)
     with c2:
-        st.markdown('<span class="hero-badge">⚡ #1 HIGHEST CONFIDENCE PICK</span>', unsafe_allow_html=True)
-        st.markdown(f"## {top_bet['selection']}")
-        st.markdown(f"**Match:** {top_bet['match']} | **Market:** {top_bet['market_type']}")
+        st.markdown('<span class="hud-badge">⚡ ALGORITHM TOP CONFIDENCE SELECTION</span>', unsafe_allow_html=True)
+        st.markdown(f"## {top['selection']}")
+        st.markdown(f"**Fixture:** {top['match']} | **Market:** {top['market_type']}")
         
         k1, k2, k3 = st.columns(3)
-        k1.metric("Confidence Score", f"{top_bet['confidence_score']}%")
-        k2.metric("Sportsbet Odds", f"${top_bet['odds']:.2f}")
-        k3.metric("Model Edge", f"{top_bet['edge_%']:+.2f}%")
-        
+        k1.metric("Confidence Index", f"{top['confidence_score']}%")
+        k2.metric("Sportsbet Odds", f"${top['odds']:.2f}")
+        k3.metric("Model Edge", f"{top['edge_%']:+.2f}%")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Metrics Grid
-m1, m2, m3 = st.columns(3)
-m1.metric("Active Round Markets", len(df_ranked))
-m2.metric("Filtered Candidates", len(df_filtered))
-m3.metric("Avg Filtered Edge", f"{df_filtered['edge_%'].mean():.2f}%" if not df_filtered.empty else "0.00%")
+# HUD Metrics Panel
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Analyzed Markets", len(df_ranked))
+m2.metric("Qualifying Picks", len(df_filtered))
+m3.metric("Highest Index", f"{df_filtered['confidence_score'].max()}%" if not df_filtered.empty else "N/A")
+m4.metric("Avg Value Edge", f"{df_filtered['edge_%'].mean():.2f}%" if not df_filtered.empty else "0.00%")
 
 st.divider()
 
-# Main Display Tabs
+# Main Matrix & SGM Tabs
 tab1, tab2, tab3 = st.tabs(["📊 Live Value Matrix", "🧩 SGM Engine", "🧬 Model Blueprint"])
 
 with tab1:
-    st.subheader("Market Rankings Matrix (Odds $\\ge \\$1.20$)")
+    st.subheader("Interactive Value Matrix (Odds $\\ge \\$1.20$)")
     if df_filtered.empty:
-        st.info("No market selections fit current search parameters.")
+        st.info("No market selections match current filter criteria.")
     else:
         st.dataframe(
             df_filtered[['rank', 'crest_url', 'match', 'market_type', 'selection', 'odds', 'confidence_score', 'edge_%']],
             column_config={
                 "rank": st.column_config.NumberColumn("Rank", format="#%d"),
-                "crest_url": st.column_config.ImageColumn("Crest", help="Home Team Crest"),
+                "crest_url": st.column_config.ImageColumn("Crest", help="Team Crest Logo"),
                 "match": "Fixture",
-                "market_type": "Category",
+                "market_type": "Market",
                 "selection": "Selection Name",
                 "odds": st.column_config.NumberColumn("Odds", format="$%.2f"),
-                "confidence_score": st.column_config.ProgressColumn(
-                    "Confidence Index",
-                    format="%.1f%%",
-                    min_value=0,
-                    max_value=100
-                ),
+                "confidence_score": st.column_config.ProgressColumn("Confidence Index", format="%.1f%%", min_value=0, max_value=100),
                 "edge_%": st.column_config.NumberColumn("Model Edge", format="%+.2f%%"),
             },
             hide_index=True,
@@ -298,39 +276,28 @@ with tab1:
         )
 
 with tab2:
-    st.subheader("Cyber SGM Multi Generator")
+    st.subheader("Cyber Multi Builder")
     col_s1, col_s2 = st.columns([1, 2])
-
     with col_s1:
-        sgm_match = st.selectbox("Select Target Match", [m for m in available_matches if m != "All Round Matches"])
-        num_legs = st.slider("Number of Legs", min_value=2, max_value=4, value=2)
-
+        sgm_match = st.selectbox("Target Match", [m for m in list(df_ranked["match"].unique())])
+        num_legs = st.slider("Number of Legs", 2, 4, 2)
     with col_s2:
         sgm_pool = df_ranked[(df_ranked["match"] == sgm_match) & (df_ranked["confidence_score"] >= 70.0)]
-
         if len(sgm_pool) < num_legs:
-            st.warning(f"Insufficient high-confidence legs to assemble a {num_legs}-leg SGM for {sgm_match}.")
+            st.warning(f"Insufficient high-confidence legs to assemble multi for {sgm_match}.")
         else:
             selected_legs = sgm_pool.head(num_legs)
             raw_multi = 1.0
             for o in selected_legs["odds"]:
                 raw_multi *= o
-            est_multi = round(raw_multi * 0.92, 2)
-
-            st.markdown(f"### Target Multi Odds: **${est_multi:.2f}**")
+            st.markdown(f"### Target Multi Odds: **${(raw_multi * 0.92):.2f}**")
             for idx, leg in selected_legs.iterrows():
-                st.markdown(
-                    f'<div class="sgm-leg-card">'
-                    f'<b>Leg {selected_legs.index.get_loc(idx) + 1}:</b> {leg["selection"]} | '
-                    f'Odds: <b>${leg["odds"]:.2f}</b> | Confidence: <b>{leg["confidence_score"]}%</b>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"<div class='hud-card' style='padding:12px; margin-bottom:8px;'><b>Leg {selected_legs.index.get_loc(idx) + 1}:</b> {leg['selection']} | Odds: <b>${leg['odds']:.2f}</b> | Confidence: <b>{leg['confidence_score']}%</b></div>", unsafe_allow_html=True)
 
 with tab3:
     st.markdown("""
-    ### Confidence Evaluation Engine
-    * **Model Projected Probability (50%):** Win/stat probabilities generated via Squiggle match projections and player stat expectancy.
-    * **Historical Hit Rate (35%):** Player cover rate over last 10 games.
-    * **Matchup Matrix (15%):** Opposition concession ratings for specific stat lines.
+    ### Quantum Evaluation Engine
+    * **Model Projected Probability (50%):** Weighted rating via Squiggle API + team projected ratings.
+    * **Historical Cover Rate (35%):** Player/Line cover frequency across last 10 games.
+    * **Matchup Defense Rating (15%):** Opponent concession indexes for specific key stats.
     """)
