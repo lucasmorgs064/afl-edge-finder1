@@ -49,17 +49,22 @@ st.markdown("""
     /* Smaller Image Box Container */
     .img-box {
         text-align: center;
-        background: rgba(0, 255, 136, 0.05);
+        background: radial-gradient(circle at center, rgba(0,255,136,0.12) 0%, rgba(15,23,42,0.6) 100%);
         border-radius: 10px;
-        padding: 8px;
+        padding: 6px;
         margin-bottom: 10px;
         border: 1px solid rgba(0, 255, 136, 0.15);
+        height: 85px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .img-box img {
-        height: 75px;
+        max-height: 75px;
         max-width: 100%;
         object-fit: contain;
+        filter: drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.6));
     }
 
     /* Card Header Tags */
@@ -146,50 +151,52 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. RELIABLE DIRECT IMAGE DATABASE
+# 2. ACCURATE PLAYER & CLUB CREST DATABASE
 # -----------------------------------------------------------------------------
 CREST_DATABASE = {
-    "ADE": "https://raw.githubusercontent.com/afl-data/logos/main/ADE.png",
-    "BRI": "https://raw.githubusercontent.com/afl-data/logos/main/BRI.png",
-    "CAR": "https://raw.githubusercontent.com/afl-data/logos/main/CAR.png",
-    "COL": "https://raw.githubusercontent.com/afl-data/logos/main/COL.png",
-    "ESS": "https://raw.githubusercontent.com/afl-data/logos/main/ESS.png",
-    "FRE": "https://raw.githubusercontent.com/afl-data/logos/main/FRE.png",
-    "GEE": "https://raw.githubusercontent.com/afl-data/logos/main/GEE.png",
-    "GCS": "https://raw.githubusercontent.com/afl-data/logos/main/GCS.png",
-    "GWS": "https://raw.githubusercontent.com/afl-data/logos/main/GWS.png",
-    "HAW": "https://raw.githubusercontent.com/afl-data/logos/main/HAW.png",
-    "MEL": "https://raw.githubusercontent.com/afl-data/logos/main/MEL.png",
-    "NTH": "https://raw.githubusercontent.com/afl-data/logos/main/NTH.png",
-    "PTA": "https://raw.githubusercontent.com/afl-data/logos/main/PTA.png",
-    "RIC": "https://raw.githubusercontent.com/afl-data/logos/main/RIC.png",
-    "STK": "https://raw.githubusercontent.com/afl-data/logos/main/STK.png",
-    "SYD": "https://raw.githubusercontent.com/afl-data/logos/main/SYD.png",
-    "WCE": "https://raw.githubusercontent.com/afl-data/logos/main/WCE.png",
-    "WBD": "https://raw.githubusercontent.com/afl-data/logos/main/WBD.png"
+    "ADE": "https://upload.wikimedia.org/wikipedia/en/thumb/8/84/Adelaide_Crows_logo.svg/200px-Adelaide_Crows_logo.svg.png",
+    "BRI": "https://upload.wikimedia.org/wikipedia/en/thumb/d/d4/Brisbane_Lions_logo.svg/200px-Brisbane_Lions_logo.svg.png",
+    "CAR": "https://upload.wikimedia.org/wikipedia/en/thumb/5/5a/Carlton_FC_logo.svg/200px-Carlton_FC_logo.svg.png",
+    "COL": "https://upload.wikimedia.org/wikipedia/en/thumb/3/3d/Collingwood_FC_logo.svg/200px-Collingwood_FC_logo.svg.png",
+    "ESS": "https://upload.wikimedia.org/wikipedia/en/thumb/c/c9/Essendon_FC_logo.svg/200px-Essendon_FC_logo.svg.png",
+    "FRE": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Fremantle_FC_logo.svg/200px-Fremantle_FC_logo.svg.png",
+    "GEE": "https://upload.wikimedia.org/wikipedia/en/thumb/1/10/Geelong_Cats_logo.svg/200px-Geelong_Cats_logo.svg.png",
+    "GCS": "https://upload.wikimedia.org/wikipedia/en/thumb/1/16/Gold_Coast_Suns_logo.svg/200px-Gold_Coast_Suns_logo.svg.png",
+    "GWS": "https://upload.wikimedia.org/wikipedia/en/thumb/d/d8/GWS_Giants_logo.svg/200px-GWS_Giants_logo.svg.png",
+    "HAW": "https://upload.wikimedia.org/wikipedia/en/thumb/1/15/Hawthorn_FC_logo.svg/200px-Hawthorn_FC_logo.svg.png",
+    "MEL": "https://upload.wikimedia.org/wikipedia/en/thumb/2/2f/Melbourne_FC_logo.svg/200px-Melbourne_FC_logo.svg.png",
+    "NTH": "https://upload.wikimedia.org/wikipedia/en/thumb/9/91/North_Melbourne_FC_logo.svg/200px-North_Melbourne_FC_logo.svg.png",
+    "PTA": "https://upload.wikimedia.org/wikipedia/en/thumb/7/77/Port_Adelaide_FC_logo.svg/200px-Port_Adelaide_FC_logo.svg.png",
+    "RIC": "https://upload.wikimedia.org/wikipedia/en/thumb/1/18/Richmond_FC_logo.svg/200px-Richmond_FC_logo.svg.png",
+    "STK": "https://upload.wikimedia.org/wikipedia/en/thumb/1/1c/St_Kilda_FC_logo.svg/200px-St_Kilda_FC_logo.svg.png",
+    "SYD": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Sydney_Swans_logo.svg/200px-Sydney_Swans_logo.svg.png",
+    "WCE": "https://upload.wikimedia.org/wikipedia/en/thumb/1/10/West_Coast_Eagles_logo.svg/200px-West_Coast_Eagles_logo.svg.png",
+    "WBD": "https://upload.wikimedia.org/wikipedia/en/thumb/8/87/Western_Bulldogs_logo.svg/200px-Western_Bulldogs_logo.svg.png"
 }
 
 PLAYER_IMAGE_DATABASE = {
-    "Caleb Serong": "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=300&q=80",
-    "Marcus Bontempelli": "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=300&q=80",
-    "Lachie Neale": "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=300&q=80",
-    "Errol Gulden": "https://images.unsplash.com/photo-1518091043644-c1d4457512c6?auto=format&fit=crop&w=300&q=80",
-    "Josh Treacy": "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=300&q=80",
-    "Joe Daniher": "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?auto=format&fit=crop&w=300&q=80"
+    "Caleb Serong": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Caleb_Serong_2022.1.jpg/440px-Caleb_Serong_2022.1.jpg",
+    "Marcus Bontempelli": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Marcus_Bontempelli_2019.1.jpg/440px-Marcus_Bontempelli_2019.1.jpg",
+    "Lachie Neale": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Lachie_Neale_2019.1.jpg/440px-Lachie_Neale_2019.1.jpg",
+    "Errol Gulden": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Errol_Gulden_2023.1.jpg/440px-Errol_Gulden_2023.1.jpg",
+    "Josh Treacy": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Josh_Treacy_2022.1.jpg/440px-Josh_Treacy_2022.1.jpg",
+    "Joe Daniher": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Joe_Daniher_2019.1.jpg/440px-Joe_Daniher_2019.1.jpg"
 }
 
 def get_bet_image(selection, match_str):
+    # Match player name directly
     for player, url in PLAYER_IMAGE_DATABASE.items():
-        if player in selection:
+        if player.lower() in selection.lower():
             return url
             
+    # Fallback to team crest logo if H2H or general market
     parts = match_str.split(" vs ")
     if len(parts) > 0:
         team_code = parts[0].strip().upper()
         if team_code in CREST_DATABASE:
             return CREST_DATABASE[team_code]
             
-    return "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=300&q=80"
+    return "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png"
 
 # -----------------------------------------------------------------------------
 # 3. SCORING PIPELINE
@@ -292,14 +299,13 @@ with tab1:
                 with cols[idx]:
                     rank_class = "card-rank-1" if item['rank'] == 1 else ""
                     
-                    # Unindented clean HTML block to avoid markdown raw code formatting
                     card_html = f"""<div class="card-box {rank_class}">
 <div>
 <span class="badge-rank">#{item['rank']}</span>
 <span class="badge-match">{item['match']}</span>
 </div>
 <div class="img-box">
-<img src="{item['bet_image']}">
+<img src="{item['bet_image']}" alt="{item['selection']}">
 </div>
 <div class="selection-text">{item['selection']}</div>
 <div class="odds-row">
