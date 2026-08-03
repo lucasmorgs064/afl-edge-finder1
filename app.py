@@ -3,6 +3,9 @@ import pandas as pd
 import numpy as np
 import json
 import os
+import re
+import urllib.request
+import urllib.parse
 
 # Page Config
 st.set_page_config(
@@ -54,14 +57,15 @@ st.markdown("""
         padding: 6px;
         margin-bottom: 10px;
         border: 1px solid rgba(0, 255, 136, 0.15);
-        height: 85px;
+        height: 90px;
         display: flex;
         align-items: center;
         justify-content: center;
+        overflow: hidden;
     }
 
     .img-box img {
-        max-height: 75px;
+        max-height: 80px;
         max-width: 100%;
         object-fit: contain;
         filter: drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.6));
@@ -151,52 +155,78 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# 2. ACCURATE PLAYER & CLUB CREST DATABASE
+# 2. ACCURATE AFL CLUB CREST DATABASE & DYNAMIC WIKIPEDIA PLAYER HEADSHOT API
 # -----------------------------------------------------------------------------
 CREST_DATABASE = {
-    "ADE": "https://upload.wikimedia.org/wikipedia/en/thumb/8/84/Adelaide_Crows_logo.svg/200px-Adelaide_Crows_logo.svg.png",
-    "BRI": "https://upload.wikimedia.org/wikipedia/en/thumb/d/d4/Brisbane_Lions_logo.svg/200px-Brisbane_Lions_logo.svg.png",
-    "CAR": "https://upload.wikimedia.org/wikipedia/en/thumb/5/5a/Carlton_FC_logo.svg/200px-Carlton_FC_logo.svg.png",
-    "COL": "https://upload.wikimedia.org/wikipedia/en/thumb/3/3d/Collingwood_FC_logo.svg/200px-Collingwood_FC_logo.svg.png",
-    "ESS": "https://upload.wikimedia.org/wikipedia/en/thumb/c/c9/Essendon_FC_logo.svg/200px-Essendon_FC_logo.svg.png",
-    "FRE": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Fremantle_FC_logo.svg/200px-Fremantle_FC_logo.svg.png",
-    "GEE": "https://upload.wikimedia.org/wikipedia/en/thumb/1/10/Geelong_Cats_logo.svg/200px-Geelong_Cats_logo.svg.png",
-    "GCS": "https://upload.wikimedia.org/wikipedia/en/thumb/1/16/Gold_Coast_Suns_logo.svg/200px-Gold_Coast_Suns_logo.svg.png",
-    "GWS": "https://upload.wikimedia.org/wikipedia/en/thumb/d/d8/GWS_Giants_logo.svg/200px-GWS_Giants_logo.svg.png",
-    "HAW": "https://upload.wikimedia.org/wikipedia/en/thumb/1/15/Hawthorn_FC_logo.svg/200px-Hawthorn_FC_logo.svg.png",
-    "MEL": "https://upload.wikimedia.org/wikipedia/en/thumb/2/2f/Melbourne_FC_logo.svg/200px-Melbourne_FC_logo.svg.png",
-    "NTH": "https://upload.wikimedia.org/wikipedia/en/thumb/9/91/North_Melbourne_FC_logo.svg/200px-North_Melbourne_FC_logo.svg.png",
-    "PTA": "https://upload.wikimedia.org/wikipedia/en/thumb/7/77/Port_Adelaide_FC_logo.svg/200px-Port_Adelaide_FC_logo.svg.png",
-    "RIC": "https://upload.wikimedia.org/wikipedia/en/thumb/1/18/Richmond_FC_logo.svg/200px-Richmond_FC_logo.svg.png",
-    "STK": "https://upload.wikimedia.org/wikipedia/en/thumb/1/1c/St_Kilda_FC_logo.svg/200px-St_Kilda_FC_logo.svg.png",
-    "SYD": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Sydney_Swans_logo.svg/200px-Sydney_Swans_logo.svg.png",
-    "WCE": "https://upload.wikimedia.org/wikipedia/en/thumb/1/10/West_Coast_Eagles_logo.svg/200px-West_Coast_Eagles_logo.svg.png",
-    "WBD": "https://upload.wikimedia.org/wikipedia/en/thumb/8/87/Western_Bulldogs_logo.svg/200px-Western_Bulldogs_logo.svg.png"
+    "ADE": "https://upload.wikimedia.org/wikipedia/en/8/84/Adelaide_Crows_logo.svg",
+    "BRI": "https://upload.wikimedia.org/wikipedia/en/d/d4/Brisbane_Lions_logo.svg",
+    "CAR": "https://upload.wikimedia.org/wikipedia/en/5/5a/Carlton_FC_logo.svg",
+    "COL": "https://upload.wikimedia.org/wikipedia/en/3/3d/Collingwood_FC_logo.svg",
+    "ESS": "https://upload.wikimedia.org/wikipedia/en/c/c9/Essendon_FC_logo.svg",
+    "FRE": "https://upload.wikimedia.org/wikipedia/en/e/e0/Fremantle_FC_logo.svg",
+    "GEE": "https://upload.wikimedia.org/wikipedia/en/1/10/Geelong_Cats_logo.svg",
+    "GCS": "https://upload.wikimedia.org/wikipedia/en/1/16/Gold_Coast_Suns_logo.svg",
+    "GWS": "https://upload.wikimedia.org/wikipedia/en/d/d8/GWS_Giants_logo.svg",
+    "HAW": "https://upload.wikimedia.org/wikipedia/en/1/15/Hawthorn_FC_logo.svg",
+    "MEL": "https://upload.wikimedia.org/wikipedia/en/2/2f/Melbourne_FC_logo.svg",
+    "NTH": "https://upload.wikimedia.org/wikipedia/en/9/91/North_Melbourne_FC_logo.svg",
+    "PTA": "https://upload.wikimedia.org/wikipedia/en/7/77/Port_Adelaide_FC_logo.svg",
+    "RIC": "https://upload.wikimedia.org/wikipedia/en/1/18/Richmond_FC_logo.svg",
+    "STK": "https://upload.wikimedia.org/wikipedia/en/1/1c/St_Kilda_FC_logo.svg",
+    "SYD": "https://upload.wikimedia.org/wikipedia/en/e/e0/Sydney_Swans_logo.svg",
+    "WCE": "https://upload.wikimedia.org/wikipedia/en/1/10/West_Coast_Eagles_logo.svg",
+    "WBD": "https://upload.wikimedia.org/wikipedia/en/8/87/Western_Bulldogs_logo.svg"
 }
 
-PLAYER_IMAGE_DATABASE = {
-    "Caleb Serong": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/Caleb_Serong_2022.1.jpg/440px-Caleb_Serong_2022.1.jpg",
-    "Marcus Bontempelli": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Marcus_Bontempelli_2019.1.jpg/440px-Marcus_Bontempelli_2019.1.jpg",
-    "Lachie Neale": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Lachie_Neale_2019.1.jpg/440px-Lachie_Neale_2019.1.jpg",
-    "Errol Gulden": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Errol_Gulden_2023.1.jpg/440px-Errol_Gulden_2023.1.jpg",
-    "Josh Treacy": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Josh_Treacy_2022.1.jpg/440px-Josh_Treacy_2022.1.jpg",
-    "Joe Daniher": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Joe_Daniher_2019.1.jpg/440px-Joe_Daniher_2019.1.jpg"
-}
+DEFAULT_AFL_LOGO = "https://upload.wikimedia.org/wikipedia/en/e/e4/Australian_Football_League.svg"
+
+def extract_player_name(selection):
+    """Extracts a two-word player name (First Last) from bet string."""
+    match = re.search(r"([A-Z][a-z]+(?:\s[A-Z][a-z]+)+)", selection)
+    if match:
+        return match.group(1)
+    return None
+
+@st.cache_data(ttl=86400)
+def fetch_wikipedia_player_image(player_name):
+    """Dynamically fetches player headshot image URL from Wikipedia for any player name."""
+    if not player_name:
+        return None
+        
+    try:
+        # Try both direct name and (footballer) disambiguation
+        queries = [f"{player_name} (footballer)", player_name]
+        headers = {'User-Agent': 'LucasBetsAFLBot/1.0 (contact@lucasbets.com)'}
+
+        for q in queries:
+            url = f"https://en.wikipedia.org/w/api.php?action=query&titles={urllib.parse.quote(q)}&prop=pageimages&format=json&pithumbsize=300"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read().decode())
+                pages = data.get("query", {}).get("pages", {})
+                for p_id, p_info in pages.items():
+                    if "thumbnail" in p_info:
+                        return p_info["thumbnail"]["source"]
+    except Exception:
+        pass
+    return None
 
 def get_bet_image(selection, match_str):
-    # Match player name directly
-    for player, url in PLAYER_IMAGE_DATABASE.items():
-        if player.lower() in selection.lower():
-            return url
+    player_name = extract_player_name(selection)
+    if player_name:
+        wiki_img = fetch_wikipedia_player_image(player_name)
+        if wiki_img:
+            return wiki_img
             
-    # Fallback to team crest logo if H2H or general market
+    return get_fallback_crest(match_str)
+
+def get_fallback_crest(match_str):
     parts = match_str.split(" vs ")
     if len(parts) > 0:
         team_code = parts[0].strip().upper()
         if team_code in CREST_DATABASE:
             return CREST_DATABASE[team_code]
-            
-    return "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png"
+    return DEFAULT_AFL_LOGO
 
 # -----------------------------------------------------------------------------
 # 3. SCORING PIPELINE
@@ -222,6 +252,7 @@ def rank_sportsbet_markets(markets_df, min_odds=1.20):
     df['edge_%'] = ((df['projected_prob'] - df['implied_prob']) * 100).round(2)
     df['confidence_score'] = df.apply(calculate_confidence_score, axis=1)
     df['bet_image'] = df.apply(lambda r: get_bet_image(r['selection'], r['match']), axis=1)
+    df['fallback_image'] = df.apply(lambda r: get_fallback_crest(r['match']), axis=1)
     df = df.sort_values(by=['confidence_score', 'edge_%'], ascending=[False, False])
     return df
 
@@ -305,7 +336,7 @@ with tab1:
 <span class="badge-match">{item['match']}</span>
 </div>
 <div class="img-box">
-<img src="{item['bet_image']}" alt="{item['selection']}">
+<img src="{item['bet_image']}" alt="{item['selection']}" onerror="this.onerror=null; this.src='{item['fallback_image']}';">
 </div>
 <div class="selection-text">{item['selection']}</div>
 <div class="odds-row">
