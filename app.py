@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------------------------
-# 1. ADVANCED CYBERPUNK HUD CSS WITH DIAGONAL 'LUCASBETS' WATERMARK PATTERN
+# 1. ADVANCED CYBERPUNK HUD CSS WITH LUCASBETS WATERMARK & DETACHED CARDS
 # -----------------------------------------------------------------------------
 st.html("""
     <style>
@@ -32,9 +32,9 @@ st.html("""
             font-family: 'Inter', -apple-system, sans-serif;
         }
 
-        /* Glassmorphism Cards with Neon Green Glow Borders */
-        .hud-card {
-            background: rgba(18, 24, 36, 0.82);
+        /* Glassmorphism Hero Card */
+        .hud-hero-card {
+            background: rgba(18, 24, 36, 0.85);
             backdrop-filter: blur(14px);
             -webkit-backdrop-filter: blur(14px);
             border: 1px solid rgba(0, 255, 136, 0.3);
@@ -55,6 +55,82 @@ st.html("""
         @keyframes pulse-glow {
             0% { border-color: rgba(0, 255, 136, 0.4); box-shadow: 0 0 15px rgba(0, 255, 136, 0.2); }
             100% { border-color: rgba(0, 255, 136, 1.0); box-shadow: 0 0 40px rgba(0, 255, 136, 0.45); }
+        }
+
+        /* DETACHED GRID BET CARDS */
+        .bet-grid-card {
+            background: rgba(18, 24, 36, 0.88);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 20px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+            transition: all 0.25s ease-in-out;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bet-grid-card:hover {
+            border-color: #00FF88;
+            transform: translateY(-4px);
+            box-shadow: 0 10px 28px rgba(0, 255, 136, 0.25);
+        }
+
+        .bet-rank-tag {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(0, 255, 136, 0.15);
+            color: #00FF88;
+            font-weight: 800;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(0, 255, 136, 0.3);
+        }
+
+        .bet-title {
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: #FFFFFF;
+            margin-top: 8px;
+            margin-bottom: 4px;
+            line-height: 1.3;
+        }
+
+        .bet-fixture {
+            font-size: 0.8rem;
+            color: #94A3B8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .odds-badge {
+            background: linear-gradient(90deg, #00FF88 0%, #00D2FF 100%);
+            color: #0B0E14;
+            font-weight: 900;
+            font-size: 1.1rem;
+            padding: 4px 10px;
+            border-radius: 8px;
+            display: inline-block;
+        }
+
+        .confidence-bar-bg {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 6px;
+            height: 8px;
+            width: 100%;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .confidence-bar-fill {
+            background: linear-gradient(90deg, #00FF88, #00D2FF);
+            height: 100%;
+            border-radius: 6px;
         }
 
         /* Futuristic HUD Badge */
@@ -83,14 +159,6 @@ st.html("""
             color: #00FF88 !important;
             font-family: 'Monaco', 'Courier New', monospace;
             font-weight: 800 !important;
-        }
-
-        /* Custom Table HUD Frame */
-        .stDataFrame {
-            border: 1px solid rgba(0, 255, 136, 0.35) !important;
-            border-radius: 12px !important;
-            background: rgba(11, 14, 20, 0.88) !important;
-            backdrop-filter: blur(10px) !important;
         }
 
         /* Cyber Button / Controls Accent */
@@ -140,12 +208,10 @@ PLAYER_IMAGE_DATABASE = {
 }
 
 def get_bet_image(selection, match_str):
-    """Returns player headshot if player prop, or team crest if H2H/Line bet."""
     for player, url in PLAYER_IMAGE_DATABASE.items():
         if player in selection:
             return url
             
-    # Fallback to team crest logo
     parts = match_str.split(" vs ")
     if len(parts) > 0:
         return CREST_DATABASE.get(parts[0].strip().upper(), "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png")
@@ -174,10 +240,7 @@ def rank_sportsbet_markets(markets_df, min_odds=1.20):
     df['implied_prob'] = df['odds'].apply(calculate_implied_prob)
     df['edge_%'] = ((df['projected_prob'] - df['implied_prob']) * 100).round(2)
     df['confidence_score'] = df.apply(calculate_confidence_score, axis=1)
-    
-    # Generate dynamic image URL for every selection
     df['bet_image'] = df.apply(lambda r: get_bet_image(r['selection'], r['match']), axis=1)
-    
     df = df.sort_values(by=['confidence_score', 'edge_%'], ascending=[False, False])
     return df
 
@@ -190,7 +253,6 @@ def load_odds_data(file_path="data/latest_odds.json"):
         except Exception:
             pass
             
-    # Mock Round 22 Active Data
     return pd.DataFrame([
         {"round": 22, "match": "MEL vs FRE", "market_type": "Player Disposals", "selection": "Caleb Serong 25+ Disposals", "odds": 1.28, "projected_prob": 0.85, "hit_rate_l10": 0.90, "matchup_factor": 1.10},
         {"round": 22, "match": "WBD vs NTH", "market_type": "Player Disposals", "selection": "Marcus Bontempelli 25+ Disposals", "odds": 1.30, "projected_prob": 0.82, "hit_rate_l10": 0.85, "matchup_factor": 1.10},
@@ -234,7 +296,7 @@ df_filtered["rank"] = range(1, len(df_filtered) + 1)
 if not df_filtered.empty:
     top = df_filtered.iloc[0]
     
-    st.markdown('<div class="hud-card hero-pulse">', unsafe_allow_html=True)
+    st.markdown('<div class="hud-hero-card hero-pulse">', unsafe_allow_html=True)
     c1, c2 = st.columns([1, 2.5])
     with c1:
         st.image(top['bet_image'], use_container_width=True)
@@ -258,29 +320,46 @@ m4.metric("Avg Value Edge", f"{df_filtered['edge_%'].mean():.2f}%" if not df_fil
 
 st.divider()
 
-# Main Interactive Matrix & SGM Tabs
-tab1, tab2, tab3 = st.tabs(["📊 Live Value Matrix", "🧩 SGM Engine", "🧬 Model Blueprint"])
+# Main Display Tabs
+tab1, tab2, tab3 = st.tabs(["📊 Live Bet Matrix (Detached Grid)", "🧩 SGM Engine", "🧬 Model Blueprint"])
 
 with tab1:
-    st.subheader("Interactive Value Matrix (Odds $\\ge \\$1.20$)")
+    st.subheader("High Confidence Value Selections")
+    
     if df_filtered.empty:
         st.info("No market selections match current filter criteria.")
     else:
-        st.dataframe(
-            df_filtered[['rank', 'bet_image', 'match', 'market_type', 'selection', 'odds', 'confidence_score', 'edge_%']],
-            column_config={
-                "rank": st.column_config.NumberColumn("Rank", format="#%d"),
-                "bet_image": st.column_config.ImageColumn("Visual", help="Player Headshot or Club Crest"),
-                "match": "Fixture",
-                "market_type": "Market",
-                "selection": "Selection Name",
-                "odds": st.column_config.NumberColumn("Odds", format="$%.2f"),
-                "confidence_score": st.column_config.ProgressColumn("Confidence Index", format="%.1f%%", min_value=0, max_value=100),
-                "edge_%": st.column_config.NumberColumn("Model Edge", format="%+.2f%%"),
-            },
-            hide_index=True,
-            use_container_width=True
-        )
+        # Render detached square/card grid in rows of 3
+        cols_per_row = 3
+        rows = [df_filtered.iloc[i:i + cols_per_row] for i in range(0, len(df_filtered), cols_per_row)]
+
+        for row in rows:
+            cols = st.columns(cols_per_row)
+            for idx, (index, item) in enumerate(row.iterrows()):
+                with cols[idx]:
+                    st.markdown(f"""
+                        <div class="bet-grid-card">
+                            <span class="bet-rank-tag">#{item['rank']}</span>
+                            <div style="text-align: center; margin-bottom: 10px;">
+                                <img src="{item['bet_image']}" style="height: 90px; border-radius: 8px; object-fit: contain;">
+                            </div>
+                            <div class="bet-title">{item['selection']}</div>
+                            <div class="bet-fixture">{item['match']} • {item['market_type']}</div>
+                            
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+                                <span class="odds-badge">${item['odds']:.2f}</span>
+                                <span style="color: #00FF88; font-weight: 700; font-size: 0.9rem;">Edge: {item['edge_%']:+.2f}%</span>
+                            </div>
+                            
+                            <div style="margin-top: 10px; font-size: 0.8rem; color: #94A3B8; display: flex; justify-content: space-between;">
+                                <span>Confidence</span>
+                                <span><b>{item['confidence_score']}%</b></span>
+                            </div>
+                            <div class="confidence-bar-bg">
+                                <div class="confidence-bar-fill" style="width: {item['confidence_score']}%;"></div>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
 
 with tab2:
     st.subheader("Cyber Multi Builder")
@@ -299,7 +378,7 @@ with tab2:
                 raw_multi *= o
             st.markdown(f"### Target Multi Odds: **${(raw_multi * 0.92):.2f}**")
             for idx, leg in selected_legs.iterrows():
-                st.markdown(f"<div class='hud-card' style='padding:12px; margin-bottom:8px;'><b>Leg {selected_legs.index.get_loc(idx) + 1}:</b> {leg['selection']} | Odds: <b>${leg['odds']:.2f}</b> | Confidence: <b>{leg['confidence_score']}%</b></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='hud-hero-card' style='padding:12px; margin-bottom:8px;'><b>Leg {selected_legs.index.get_loc(idx) + 1}:</b> {leg['selection']} | Odds: <b>${leg['odds']:.2f}</b> | Confidence: <b>{leg['confidence_score']}%</b></div>", unsafe_allow_html=True)
 
 with tab3:
     st.markdown("""
