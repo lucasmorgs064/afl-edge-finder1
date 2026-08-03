@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import json
 import os
-from ranker import rank_sportsbet_markets
 
 # Set page configuration
 st.set_page_config(
@@ -13,13 +13,44 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------------------------
+# Ranking & Scoring Functions
+# -----------------------------------------------------------------------------
+def calculate_implied_prob(odds):
+    """Converts decimal odds to implied probability."""
+    return 1 / odds if odds > 0 else 0
+
+def calculate_confidence_score(row):
+    """Calculates composite confidence score (0 to 100%)."""
+    proj_prob = row['projected_prob']
+    hit_rate = row.get('hit_rate_l10', proj_prob)
+    matchup = row.get('matchup_factor', 1.0)
+    
+    # Weighted composite score
+    raw_score = (0.50 * proj_prob) + (0.35 * hit_rate) + (0.15 * (proj_prob * matchup))
+    
+    # Calculate edge against Sportsbet odds
+    implied_prob = calculate_implied_prob(row['odds'])
+    edge = proj_prob - implied_prob
+    
+    # Boost/penalize score based on positive edge
+    final_confidence = np.clip(raw_score * (1 + (edge * 0.5)), 0, 1)
+    return round(final_confidence * 100, 1)
+
+def rank_sportsbet_markets(markets_df, min_odds=1.20):
+    """Filters and ranks all Sportsbet markets for the current AFL round."""
+    df = markets_df[markets_df['odds'] >= min_odds].copy()
+    df['implied_prob'] = df['odds'].apply(calculate_implied_prob)
+    df['edge_%'] = ((df['projected_prob'] - df['implied_prob']) * 100).round(2)
+    df['confidence_score'] = df.apply(calculate_confidence_score, axis=1)
+    df = df.sort_values(by=['confidence_score', 'edge_%'], ascending=[False, False])
+    df['rank'] = range(1, len(df) + 1)
+    return df
+
+# -----------------------------------------------------------------------------
 # Data Loading & Caching Function
 # -----------------------------------------------------------------------------
-@st.cache_data(ttl=900)  # Refresh cache every 15 minutes
+@st.cache_data(ttl=900)
 def load_odds_data(file_path="data/latest_odds.json"):
-    """
-    Loads raw odds data from local storage or returns fallback demo data.
-    """
     if os.path.exists(file_path):
         try:
             with open(file_path, "r") as f:
@@ -29,7 +60,7 @@ def load_odds_data(file_path="data/latest_odds.json"):
             st.error(f"Error reading {file_path}: {e}")
             return pd.DataFrame()
     else:
-        # Fallback Mock Data if JSON is missing or during initial testing
+        # Fallback Mock Data if JSON is missing
         mock_data = [
             {"match": "Fremantle vs WBD", "market_type": "Player Disposals", "selection": "Caleb Serong 25+ Disposals", "odds": 1.28, "projected_prob": 0.84, "hit_rate_l10": 0.90, "matchup_factor": 1.1},
             {"match": "Fremantle vs WBD", "market_type": "Total Goals", "selection": "Josh Treacy 2+ Goals", "odds": 1.38, "projected_prob": 0.78, "hit_rate_l10": 0.80, "matchup_factor": 1.15},
@@ -37,8 +68,6 @@ def load_odds_data(file_path="data/latest_odds.json"):
             {"match": "Fremantle vs WBD", "market_type": "Player Disposals", "selection": "Andrew Brayshaw 25+ Disposals", "odds": 1.40, "projected_prob": 0.75, "hit_rate_l10": 0.80, "matchup_factor": 1.0},
             {"match": "Fremantle vs WBD", "market_type": "Player Disposals", "selection": "Marcus Bontempelli 25+ Disposals", "odds": 1.52, "projected_prob": 0.71, "hit_rate_l10": 0.70, "matchup_factor": 1.05},
             {"match": "Fremantle vs WBD", "market_type": "Head to Head", "selection": "Fremantle Win", "odds": 1.45, "projected_prob": 0.72, "hit_rate_l10": 0.75, "matchup_factor": 1.0},
-            {"match": "MEL vs FRE", "market_type": "Player Disposals", "selection": "Clayton Oliver 25+ Disposals", "odds": 1.32, "projected_prob": 0.81, "hit_rate_l10": 0.85, "matchup_factor": 1.0},
-            {"match": "MEL vs FRE", "market_type": "Total Goals", "selection": "Bayley Fritsch 2+ Goals", "odds": 1.62, "projected_prob": 0.65, "hit_rate_l10": 0.60, "matchup_factor": 1.1},
         ]
         return pd.DataFrame(mock_data)
 
@@ -48,26 +77,19 @@ def load_odds_data(file_path="data/latest_odds.json"):
 st.title("🏉 AFL Sportsbet Value & Confidence Tracker")
 st.markdown("Automated confidence ranking and value calculation for all AFL market selections $\\ge \\$1.20$.")
 
-# Load raw dataset
 df_raw = load_odds_data()
 
 if df_raw.empty:
     st.warning("No betting data currently available. Check GitHub Actions pipeline status.")
     st.stop()
 
-# Run through confidence ranking engine
 df_ranked = rank_sportsbet_markets(df_raw, min_odds=1.20)
 
-# -----------------------------------------------------------------------------
-# Sidebar Controls & Filters
-# -----------------------------------------------------------------------------
+# Sidebar Controls
 st.sidebar.header("🎯 Analytics Controls")
-
-# Match Selector
 available_matches = ["All Matches"] + list(df_ranked["match"].unique())
 selected_match = st.sidebar.selectbox("Select Match", available_matches)
 
-# Odds Range Slider
 min_odds_val, max_odds_val = st.sidebar.slider(
     "Filter Odds Range",
     min_value=1.20,
@@ -76,7 +98,6 @@ min_odds_val, max_odds_val = st.sidebar.slider(
     step=0.05
 )
 
-# Market Types Multiselect
 all_market_types = list(df_ranked["market_type"].unique())
 selected_markets = st.sidebar.multiselect(
     "Filter Market Types",
@@ -84,7 +105,6 @@ selected_markets = st.sidebar.multiselect(
     default=all_market_types
 )
 
-# Minimum Confidence Score Threshold
 min_conf_score = st.sidebar.slider(
     "Min Confidence Score (%)",
     min_value=50.0,
@@ -104,13 +124,10 @@ df_filtered = df_ranked[
 if selected_match != "All Matches":
     df_filtered = df_filtered[df_filtered["match"] == selected_match]
 
-# Re-index Rank Column for Display
 df_filtered = df_filtered.copy()
 df_filtered["rank"] = range(1, len(df_filtered) + 1)
 
-# -----------------------------------------------------------------------------
-# Summary Metrics Header
-# -----------------------------------------------------------------------------
+# Metrics Header
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Total Markets Analyzed", len(df_ranked))
 m2.metric("Qualifying Markets", len(df_filtered))
@@ -122,19 +139,14 @@ if not df_filtered.empty:
 
 st.divider()
 
-# -----------------------------------------------------------------------------
-# Main Content Tabs
-# -----------------------------------------------------------------------------
+# Tabs
 tab1, tab2, tab3 = st.tabs(["🏆 Ranked Confidence Board", "🧩 Same Game Multi Generator", "ℹ️ Model Methodology"])
 
 with tab1:
     st.subheader("Current Round Market Rankings (Odds $\\ge \\$1.20$)")
-    st.caption("Ranked by composite score: Model Probability (50%) + Historical Consistency (35%) + Matchup Rating (15%).")
-
     if df_filtered.empty:
         st.info("No markets match the currently selected filter criteria.")
     else:
-        # Display Styled Data Table
         st.dataframe(
             df_filtered[['rank', 'match', 'market_type', 'selection', 'odds', 'confidence_score', 'edge_%']],
             column_config={
@@ -157,8 +169,6 @@ with tab1:
 
 with tab2:
     st.subheader("Automated Same Game Multi (SGM) Builder")
-    st.write("Combines top-ranked, high-confidence anchors into a custom multi target.")
-
     col_sgm1, col_sgm2 = st.columns([1, 2])
 
     with col_sgm1:
@@ -167,37 +177,25 @@ with tab2:
         num_legs = st.slider("Target Number of Legs", min_value=2, max_value=4, value=2)
 
     with col_sgm2:
-        # Generate SGM Legs
         sgm_pool = df_ranked[(df_ranked["match"] == sgm_match) & (df_ranked["confidence_score"] >= 70.0)]
 
         if len(sgm_pool) < num_legs:
             st.warning(f"Not enough high-confidence legs available for {sgm_match} to build a {num_legs}-leg SGM.")
         else:
             selected_legs = sgm_pool.head(num_legs)
-            
-            # Estimate total odds (compounded with slight reduction for correlation)
             raw_multi_odds = 1.0
             for o in selected_legs["odds"]:
                 raw_multi_odds *= o
-            
-            est_multi_odds = round(raw_multi_odds * 0.92, 2)  # Adjust for standard bookmaker multi margin
+            est_multi_odds = round(raw_multi_odds * 0.92, 2)
 
             st.markdown(f"### Proposed Multi — Approx. Total Odds: **${est_multi_odds:.2f}**")
-            
             for idx, leg in selected_legs.iterrows():
                 st.info(f"**Leg {selected_legs.index.get_loc(idx) + 1}:** {leg['selection']} | Odds: **${leg['odds']:.2f}** (Confidence: **{leg['confidence_score']}%**)")
 
 with tab3:
     st.markdown("""
     ### How the Model Ranks Confidence
-    
-    Rather than relying solely on raw odds, the system evaluates three distinct metrics for every market selection:
-    
     1. **Model Projected Probability ($50\%$ Weight):** Implied probability generated by historical team rating systems, Squiggle match projections, and player stat expectancy.
     2. **Historical Cover Rate ($35\%$ Weight):** The percentage of times the selection successfully hit over its last 10 games.
     3. **Matchup Rating ($15\%$ Weight):** Adjusts for opposition tendencies (e.g., how heavily the opposition concedes disposals or forward goals).
-    
-    All selections are re-calculated daily via GitHub Actions workflows and updated in real-time.
     """)
-
-st.sidebar.caption("Data updated daily via GitHub Actions.")
