@@ -6,14 +6,14 @@ import os
 
 # Set Page Configuration
 st.set_page_config(
-    page_title="LUCASBETS // CYBER-HUD COMMAND CENTER",
+    page_title="LUCASBETS // SPORTS CARD TERMINAL",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # -----------------------------------------------------------------------------
-# 1. ADVANCED CYBERPUNK HUD CSS WITH LUCASBETS WATERMARK & DETACHED CARDS
+# 1. ADVANCED CYBERPUNK CSS: DIAGONAL WATERMARK & TRADING SPORTS CARDS
 # -----------------------------------------------------------------------------
 st.html("""
     <style>
@@ -22,7 +22,7 @@ st.html("""
             background: 
                 /* Diagonal LUCASBETS SVG Pattern Overlay */
                 url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><text x='50%' y='50%' fill='rgba(0, 255, 136, 0.035)' font-size='22' font-family='sans-serif' font-weight='900' text-anchor='middle' dominant-baseline='middle' transform='rotate(-35 110 110)'>LUCASBETS</text></svg>"),
-                /* Subtle Central Green Spotlight Gradient */
+                /* Central Glow Gradient */
                 radial-gradient(circle at 50% 20%, rgba(0, 255, 136, 0.08) 0%, rgba(11, 14, 20, 0.97) 75%),
                 /* Dark Stadium Backdrop */
                 url("https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=1920&q=80");
@@ -32,150 +32,160 @@ st.html("""
             font-family: 'Inter', -apple-system, sans-serif;
         }
 
-        /* Glassmorphism Hero Card */
-        .hud-hero-card {
-            background: rgba(18, 24, 36, 0.85);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            border: 1px solid rgba(0, 255, 136, 0.3);
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(0, 255, 136, 0.05);
-            margin-bottom: 25px;
-            position: relative;
-        }
-
-        /* Hero Pulse Highlight for #1 Ranked Bet */
-        .hero-pulse {
-            border: 1px solid #00FF88 !important;
-            box-shadow: 0 0 35px rgba(0, 255, 136, 0.3), inset 0 0 20px rgba(0, 255, 136, 0.12) !important;
-            animation: pulse-glow 2.8s infinite alternate;
-        }
-
-        @keyframes pulse-glow {
-            0% { border-color: rgba(0, 255, 136, 0.4); box-shadow: 0 0 15px rgba(0, 255, 136, 0.2); }
-            100% { border-color: rgba(0, 255, 136, 1.0); box-shadow: 0 0 40px rgba(0, 255, 136, 0.45); }
-        }
-
-        /* DETACHED GRID BET CARDS */
-        .bet-grid-card {
-            background: rgba(18, 24, 36, 0.88);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 14px;
+        /* DIGITAL TRADING SPORTS CARD STYLING */
+        .sports-card {
+            background: linear-gradient(145deg, rgba(20, 28, 42, 0.9) 0%, rgba(10, 14, 22, 0.95) 100%);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 255, 136, 0.25);
+            border-radius: 18px;
             padding: 16px;
-            margin-bottom: 20px;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
-            transition: all 0.25s ease-in-out;
+            margin-bottom: 22px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 0 12px rgba(0, 255, 136, 0.04);
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
             position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify: space-between;
+        }
+
+        .sports-card:hover {
+            border-color: #00FF88;
+            transform: translateY(-6px) scale(1.02);
+            box-shadow: 0 14px 35px rgba(0, 255, 136, 0.3);
+        }
+
+        /* Top Ranked Card Special Aura */
+        .rank-1-card {
+            border: 1.5px solid #00FF88 !important;
+            box-shadow: 0 0 25px rgba(0, 255, 136, 0.25) !important;
+        }
+
+        /* Card Image Box */
+        .card-img-wrapper {
+            position: relative;
+            width: 100%;
+            height: 140px;
+            border-radius: 12px;
+            overflow: hidden;
+            background: radial-gradient(circle at center, rgba(0,255,136,0.15) 0%, rgba(15,23,42,0.6) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .card-img-wrapper img {
+            max-height: 100%;
+            max-width: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0px 5px 10px rgba(0, 0, 0, 0.7));
+        }
+
+        /* Badges & Tags */
+        .card-rank-badge {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: rgba(11, 14, 20, 0.85);
+            color: #00FF88;
+            font-weight: 900;
+            font-size: 0.75rem;
+            padding: 3px 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 255, 136, 0.4);
+            backdrop-filter: blur(4px);
+        }
+
+        .card-match-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(11, 14, 20, 0.85);
+            color: #94A3B8;
+            font-weight: 700;
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-transform: uppercase;
+        }
+
+        /* Content Text */
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 900;
+            color: #FFFFFF;
+            letter-spacing: -0.2px;
+            margin-bottom: 8px;
+            line-height: 1.25;
+            min-height: 2.5rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
             overflow: hidden;
         }
 
-        .bet-grid-card:hover {
-            border-color: #00FF88;
-            transform: translateY(-4px);
-            box-shadow: 0 10px 28px rgba(0, 255, 136, 0.25);
-        }
-
-        .bet-rank-tag {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            background: rgba(0, 255, 136, 0.15);
-            color: #00FF88;
-            font-weight: 800;
-            font-size: 0.75rem;
-            padding: 2px 8px;
-            border-radius: 6px;
-            border: 1px solid rgba(0, 255, 136, 0.3);
-        }
-
-        .bet-title {
-            font-size: 1.05rem;
-            font-weight: 800;
-            color: #FFFFFF;
+        /* Stats Row */
+        .card-stats-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-top: 8px;
-            margin-bottom: 4px;
-            line-height: 1.3;
+            margin-bottom: 10px;
         }
 
-        .bet-fixture {
-            font-size: 0.8rem;
-            color: #94A3B8;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 12px;
-        }
-
-        .odds-badge {
+        .card-odds {
             background: linear-gradient(90deg, #00FF88 0%, #00D2FF 100%);
             color: #0B0E14;
             font-weight: 900;
-            font-size: 1.1rem;
-            padding: 4px 10px;
-            border-radius: 8px;
-            display: inline-block;
+            font-size: 1.25rem;
+            padding: 4px 12px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
         }
 
-        .confidence-bar-bg {
-            background: rgba(30, 41, 59, 0.8);
+        .card-edge {
+            color: #00FF88;
+            font-weight: 800;
+            font-size: 0.95rem;
+            font-family: 'Monaco', monospace;
+        }
+
+        /* Progress Bar */
+        .confidence-bg {
+            background: rgba(30, 41, 59, 0.9);
             border-radius: 6px;
-            height: 8px;
+            height: 6px;
             width: 100%;
-            margin-top: 8px;
             overflow: hidden;
         }
 
-        .confidence-bar-fill {
+        .confidence-fill {
             background: linear-gradient(90deg, #00FF88, #00D2FF);
             height: 100%;
             border-radius: 6px;
         }
 
-        /* Futuristic HUD Badge */
-        .hud-badge {
-            background: linear-gradient(90deg, #00FF88 0%, #00D2FF 100%);
-            color: #0B0E14;
-            font-weight: 900;
-            padding: 5px 16px;
-            border-radius: 20px;
-            font-size: 0.75rem;
-            letter-spacing: 1.2px;
-            text-transform: uppercase;
-            box-shadow: 0 0 12px rgba(0, 255, 136, 0.5);
-        }
-
-        /* Custom Metrics Container */
+        /* Metrics Styling */
         [data-testid="stMetric"] {
             background: rgba(18, 24, 36, 0.88) !important;
             border: 1px solid rgba(0, 255, 136, 0.25) !important;
             border-radius: 12px !important;
-            padding: 16px !important;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+            padding: 14px !important;
         }
 
         [data-testid="stMetricValue"] {
             color: #00FF88 !important;
-            font-family: 'Monaco', 'Courier New', monospace;
             font-weight: 800 !important;
-        }
-
-        /* Cyber Button / Controls Accent */
-        .stButton>button {
-            background: linear-gradient(90deg, #00FF88 0%, #00D2FF 100%) !important;
-            color: #0B0E14 !important;
-            font-weight: 800 !important;
-            border: none !important;
-            border-radius: 8px !important;
-            text-transform: uppercase !important;
-            letter-spacing: 1px !important;
         }
     </style>
 """)
 
 # -----------------------------------------------------------------------------
-# 2. IMAGE DATABASE (PLAYERS & CLUB CRESTS)
+# 2. COMPLETE PLAYER & TEAM IMAGE MAPPING DATABASE
 # -----------------------------------------------------------------------------
 CREST_DATABASE = {
     "ADE": "https://upload.wikimedia.org/wikipedia/en/thumb/8/84/Adelaide_Crows_logo.svg/200px-Adelaide_Crows_logo.svg.png",
@@ -208,6 +218,7 @@ PLAYER_IMAGE_DATABASE = {
 }
 
 def get_bet_image(selection, match_str):
+    """Ensures every pick gets a player image or fallback team crest."""
     for player, url in PLAYER_IMAGE_DATABASE.items():
         if player in selection:
             return url
@@ -218,7 +229,7 @@ def get_bet_image(selection, match_str):
     return "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png"
 
 # -----------------------------------------------------------------------------
-# 3. SCORING ENGINE & DATA PIPELINE
+# 3. SCORING PIPELINE
 # -----------------------------------------------------------------------------
 def calculate_implied_prob(odds):
     return 1 / odds if odds > 0 else 0
@@ -264,22 +275,22 @@ def load_odds_data(file_path="data/latest_odds.json"):
     ])
 
 # -----------------------------------------------------------------------------
-# 4. DASHBOARD RENDER ENGINE
+# 4. APP DASHBOARD RENDER
 # -----------------------------------------------------------------------------
-st.title("⚡ LUCASBETS // CYBER-HUD COMMAND CENTER")
-st.caption("Quantum Value Analytics Engine • Sportsbet Active Markets $\\ge \\$1.20$")
+st.title("⚡ LUCASBETS // CYBER SPORTS CARDS")
+st.caption("AFL Sportsbet Value Matrix • Auto-Ranked Confidence Index")
 
 df_raw = load_odds_data()
 df_ranked = rank_sportsbet_markets(df_raw, min_odds=1.20)
 
-# Sidebar Parameters
-st.sidebar.header("🕹️ TERMINAL PARAMETERS")
-selected_match = st.sidebar.selectbox("Match Select", ["All Round Matches"] + list(df_ranked["match"].unique()))
+# Sidebar
+st.sidebar.header("🕹️ FILTER CARDS")
+selected_match = st.sidebar.selectbox("Match Filter", ["All Round Matches"] + list(df_ranked["match"].unique()))
 min_odds_val, max_odds_val = st.sidebar.slider("Odds Band ($)", 1.20, 3.00, (1.20, 2.00), 0.05)
-selected_markets = st.sidebar.multiselect("Market Categories", list(df_ranked["market_type"].unique()), list(df_ranked["market_type"].unique()))
-min_conf_score = st.sidebar.slider("Min Confidence Index (%)", 50.0, 95.0, 65.0, 1.0)
+selected_markets = st.sidebar.multiselect("Market Type", list(df_ranked["market_type"].unique()), list(df_ranked["market_type"].unique()))
+min_conf_score = st.sidebar.slider("Min Confidence (%)", 50.0, 95.0, 65.0, 1.0)
 
-# Filtering logic
+# Filter Dataset
 df_filtered = df_ranked[
     (df_ranked["odds"] >= min_odds_val) &
     (df_ranked["odds"] <= max_odds_val) &
@@ -292,71 +303,53 @@ if selected_match != "All Round Matches":
 
 df_filtered["rank"] = range(1, len(df_filtered) + 1)
 
-# --- HERO TOP PICK CARD ---
-if not df_filtered.empty:
-    top = df_filtered.iloc[0]
-    
-    st.markdown('<div class="hud-hero-card hero-pulse">', unsafe_allow_html=True)
-    c1, c2 = st.columns([1, 2.5])
-    with c1:
-        st.image(top['bet_image'], use_container_width=True)
-    with c2:
-        st.markdown('<span class="hud-badge">⚡ LUCASBETS ALGORITHM TOP SELECTION</span>', unsafe_allow_html=True)
-        st.markdown(f"## {top['selection']}")
-        st.markdown(f"**Fixture:** {top['match']} | **Market:** {top['market_type']}")
-        
-        k1, k2, k3 = st.columns(3)
-        k1.metric("Confidence Index", f"{top['confidence_score']}%")
-        k2.metric("Sportsbet Odds", f"${top['odds']:.2f}")
-        k3.metric("Model Edge", f"{top['edge_%']:+.2f}%")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# Metrics Grid
+# Summary Status Bar
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Analyzed Markets", len(df_ranked))
-m2.metric("Qualifying Picks", len(df_filtered))
-m3.metric("Highest Index", f"{df_filtered['confidence_score'].max()}%" if not df_filtered.empty else "N/A")
-m4.metric("Avg Value Edge", f"{df_filtered['edge_%'].mean():.2f}%" if not df_filtered.empty else "0.00%")
+m1.metric("Active Markets", len(df_ranked))
+m2.metric("Matching Cards", len(df_filtered))
+m3.metric("Top Confidence", f"{df_filtered['confidence_score'].max()}%" if not df_filtered.empty else "N/A")
+m4.metric("Average Edge", f"{df_filtered['edge_%'].mean():.2f}%" if not df_filtered.empty else "0.00%")
 
 st.divider()
 
-# Main Display Tabs
-tab1, tab2, tab3 = st.tabs(["📊 Live Bet Matrix (Detached Grid)", "🧩 SGM Engine", "🧬 Model Blueprint"])
+# Navigation Tabs
+tab1, tab2, tab3 = st.tabs(["🎴 Sports Card Grid", "🧩 SGM Multi Builder", "🧬 Model Blueprint"])
 
 with tab1:
-    st.subheader("High Confidence Value Selections")
-    
     if df_filtered.empty:
-        st.info("No market selections match current filter criteria.")
+        st.info("No betting cards fit the current sidebar parameters.")
     else:
-        # Render detached square/card grid in rows of 3
-        cols_per_row = 3
+        # Display as a grid of 4 cards per row
+        cols_per_row = 4
         rows = [df_filtered.iloc[i:i + cols_per_row] for i in range(0, len(df_filtered), cols_per_row)]
 
         for row in rows:
             cols = st.columns(cols_per_row)
             for idx, (index, item) in enumerate(row.iterrows()):
                 with cols[idx]:
+                    rank_class = "rank-1-card" if item['rank'] == 1 else ""
+                    
                     st.markdown(f"""
-                        <div class="bet-grid-card">
-                            <span class="bet-rank-tag">#{item['rank']}</span>
-                            <div style="text-align: center; margin-bottom: 10px;">
-                                <img src="{item['bet_image']}" style="height: 90px; border-radius: 8px; object-fit: contain;">
-                            </div>
-                            <div class="bet-title">{item['selection']}</div>
-                            <div class="bet-fixture">{item['match']} • {item['market_type']}</div>
-                            
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
-                                <span class="odds-badge">${item['odds']:.2f}</span>
-                                <span style="color: #00FF88; font-weight: 700; font-size: 0.9rem;">Edge: {item['edge_%']:+.2f}%</span>
+                        <div class="sports-card {rank_class}">
+                            <div class="card-img-wrapper">
+                                <span class="card-rank-badge">#{item['rank']}</span>
+                                <span class="card-match-badge">{item['match']}</span>
+                                <img src="{item['bet_image']}" alt="{item['selection']}">
                             </div>
                             
-                            <div style="margin-top: 10px; font-size: 0.8rem; color: #94A3B8; display: flex; justify-content: space-between;">
-                                <span>Confidence</span>
-                                <span><b>{item['confidence_score']}%</b></span>
+                            <div class="card-title">{item['selection']}</div>
+                            
+                            <div class="card-stats-row">
+                                <span class="card-odds">${item['odds']:.2f}</span>
+                                <span class="card-edge">+{item['edge_%']:.1f}% Edge</span>
                             </div>
-                            <div class="confidence-bar-bg">
-                                <div class="confidence-bar-fill" style="width: {item['confidence_score']}%;"></div>
+                            
+                            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#94A3B8; margin-bottom:4px;">
+                                <span>CONFIDENCE</span>
+                                <span><b style="color:#00FF88;">{item['confidence_score']}%</b></span>
+                            </div>
+                            <div class="confidence-bg">
+                                <div class="confidence-fill" style="width: {item['confidence_score']}%;"></div>
                             </div>
                         </div>
                     """, unsafe_allow_html=True)
@@ -366,7 +359,7 @@ with tab2:
     col_s1, col_s2 = st.columns([1, 2])
     with col_s1:
         sgm_match = st.selectbox("Target Match", [m for m in list(df_ranked["match"].unique())])
-        num_legs = st.slider("Number of Legs", 2, 4, 2)
+        num_legs = st.slider("Leg Count", 2, 4, 2)
     with col_s2:
         sgm_pool = df_ranked[(df_ranked["match"] == sgm_match) & (df_ranked["confidence_score"] >= 70.0)]
         if len(sgm_pool) < num_legs:
@@ -378,12 +371,17 @@ with tab2:
                 raw_multi *= o
             st.markdown(f"### Target Multi Odds: **${(raw_multi * 0.92):.2f}**")
             for idx, leg in selected_legs.iterrows():
-                st.markdown(f"<div class='hud-hero-card' style='padding:12px; margin-bottom:8px;'><b>Leg {selected_legs.index.get_loc(idx) + 1}:</b> {leg['selection']} | Odds: <b>${leg['odds']:.2f}</b> | Confidence: <b>{leg['confidence_score']}%</b></div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='background:rgba(18,24,36,0.8); border:1px solid rgba(0,255,136,0.3); border-radius:10px; padding:12px; margin-bottom:8px;'>"
+                    f"<b>Leg {selected_legs.index.get_loc(idx) + 1}:</b> {leg['selection']} | Odds: <b>${leg['odds']:.2f}</b> | Confidence: <b>{leg['confidence_score']}%</b>"
+                    f"</div>", 
+                    unsafe_allow_html=True
+                )
 
 with tab3:
     st.markdown("""
-    ### Lucasbets Model Evaluation Architecture
-    * **Model Projected Probability (50%):** Weighted rating via Squiggle API + team projected ratings.
-    * **Historical Cover Frequency (35%):** Player/Line cover rate across last 10 games.
-    * **Matchup Defense Rating (15%):** Opponent concession indexes for specific key stats.
+    ### Lucasbets Model Architecture
+    * **Model Probability (50%):** Weighted projection from Squiggle API data.
+    * **Historical Hit Rate (35%):** Last 10 matches cover rate.
+    * **Matchup Matrix (15%):** Defensive concession indexes per stat.
     """)
