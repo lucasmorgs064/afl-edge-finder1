@@ -4,54 +4,57 @@ import numpy as np
 import json
 import os
 
-# Page Config
+# Set Page Configuration
 st.set_page_config(
-    page_title="AFL CYBER-HUD // COMMAND CENTER",
+    page_title="LUCASBETS // CYBER-HUD COMMAND CENTER",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # -----------------------------------------------------------------------------
-# 1. NEXT-GEN CYBERPUNK HUD CSS WITH AFL STADIUM BACKGROUND & OVAL GRID
+# 1. ADVANCED CYBERPUNK HUD CSS WITH DIAGONAL 'LUCASBETS' WATERMARK PATTERN
 # -----------------------------------------------------------------------------
 st.html("""
     <style>
-        /* Dark Cyber Stadium Background with Subtle AFL Oval Field Grid Pattern */
+        /* Base Dark Stadium Background + Diagonal Repeating LUCASBETS Watermark */
         .stApp {
             background: 
-                radial-gradient(circle at 50% 20%, rgba(0, 255, 136, 0.08) 0%, rgba(11, 14, 20, 0.95) 70%),
+                /* Diagonal LUCASBETS SVG Pattern Overlay */
+                url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><text x='50%' y='50%' fill='rgba(0, 255, 136, 0.035)' font-size='22' font-family='sans-serif' font-weight='900' text-anchor='middle' dominant-baseline='middle' transform='rotate(-35 110 110)'>LUCASBETS</text></svg>"),
+                /* Subtle Central Green Spotlight Gradient */
+                radial-gradient(circle at 50% 20%, rgba(0, 255, 136, 0.08) 0%, rgba(11, 14, 20, 0.97) 75%),
+                /* Dark Stadium Backdrop */
                 url("https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=1920&q=80");
-            background-size: cover;
+            background-size: 220px 220px, cover, cover;
             background-attachment: fixed;
             color: #E2E8F0;
             font-family: 'Inter', -apple-system, sans-serif;
         }
 
-        /* Glassmorphism Containers with Neon Glow Borders */
+        /* Glassmorphism Cards with Neon Green Glow Borders */
         .hud-card {
-            background: rgba(18, 24, 36, 0.75);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(0, 255, 136, 0.25);
+            background: rgba(18, 24, 36, 0.82);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(0, 255, 136, 0.3);
             border-radius: 16px;
             padding: 24px;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(0, 255, 136, 0.05);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(0, 255, 136, 0.05);
             margin-bottom: 25px;
             position: relative;
-            overflow: hidden;
         }
 
-        /* Hero Pulse Highlight for Top-Ranked Pick */
+        /* Hero Pulse Highlight for #1 Ranked Bet */
         .hero-pulse {
             border: 1px solid #00FF88 !important;
-            box-shadow: 0 0 30px rgba(0, 255, 136, 0.25), inset 0 0 20px rgba(0, 255, 136, 0.1) !important;
-            animation: pulse-glow 3s infinite alternate;
+            box-shadow: 0 0 35px rgba(0, 255, 136, 0.3), inset 0 0 20px rgba(0, 255, 136, 0.12) !important;
+            animation: pulse-glow 2.8s infinite alternate;
         }
 
         @keyframes pulse-glow {
             0% { border-color: rgba(0, 255, 136, 0.4); box-shadow: 0 0 15px rgba(0, 255, 136, 0.2); }
-            100% { border-color: rgba(0, 255, 136, 1.0); box-shadow: 0 0 35px rgba(0, 255, 136, 0.4); }
+            100% { border-color: rgba(0, 255, 136, 1.0); box-shadow: 0 0 40px rgba(0, 255, 136, 0.45); }
         }
 
         /* Futuristic HUD Badge */
@@ -59,21 +62,21 @@ st.html("""
             background: linear-gradient(90deg, #00FF88 0%, #00D2FF 100%);
             color: #0B0E14;
             font-weight: 900;
-            padding: 4px 14px;
+            padding: 5px 16px;
             border-radius: 20px;
             font-size: 0.75rem;
-            letter-spacing: 1px;
+            letter-spacing: 1.2px;
             text-transform: uppercase;
-            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+            box-shadow: 0 0 12px rgba(0, 255, 136, 0.5);
         }
 
-        /* Custom Metrics Styling */
+        /* Custom Metrics Container */
         [data-testid="stMetric"] {
-            background: rgba(18, 24, 36, 0.85) !important;
-            border: 1px solid rgba(0, 255, 136, 0.2) !important;
+            background: rgba(18, 24, 36, 0.88) !important;
+            border: 1px solid rgba(0, 255, 136, 0.25) !important;
             border-radius: 12px !important;
             padding: 16px !important;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.4) !important;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
         }
 
         [data-testid="stMetricValue"] {
@@ -84,13 +87,13 @@ st.html("""
 
         /* Custom Table HUD Frame */
         .stDataFrame {
-            border: 1px solid rgba(0, 255, 136, 0.3) !important;
+            border: 1px solid rgba(0, 255, 136, 0.35) !important;
             border-radius: 12px !important;
-            background: rgba(11, 14, 20, 0.85) !important;
-            backdrop-filter: blur(8px) !important;
+            background: rgba(11, 14, 20, 0.88) !important;
+            backdrop-filter: blur(10px) !important;
         }
 
-        /* Cyber Button / Accent Styling */
+        /* Cyber Button / Controls Accent */
         .stButton>button {
             background: linear-gradient(90deg, #00FF88 0%, #00D2FF 100%) !important;
             color: #0B0E14 !important;
@@ -104,7 +107,7 @@ st.html("""
 """)
 
 # -----------------------------------------------------------------------------
-# 2. Team Crest & Player Image Database
+# 2. IMAGE DATABASE (PLAYERS & CLUB CRESTS)
 # -----------------------------------------------------------------------------
 CREST_DATABASE = {
     "ADE": "https://upload.wikimedia.org/wikipedia/en/thumb/8/84/Adelaide_Crows_logo.svg/200px-Adelaide_Crows_logo.svg.png",
@@ -127,27 +130,29 @@ CREST_DATABASE = {
     "WBD": "https://upload.wikimedia.org/wikipedia/en/thumb/8/87/Western_Bulldogs_logo.svg/200px-Western_Bulldogs_logo.svg.png"
 }
 
-IMAGE_DATABASE = {
+PLAYER_IMAGE_DATABASE = {
     "Caleb Serong": "https://encrypted-tbn2.gstatic.com/licensed-image?q=tbn:ANd9GcQ_eGg5rGeJ6ybuBG_x1TVPeqlYGBmA_FjhV8QwEvFsq9XFCNYUjFzClJmbBr6aG0i2rcWErmGBISc09UM",
     "Marcus Bontempelli": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Marcus_Bontempelli_2019.1.jpg/800px-Marcus_Bontempelli_2019.1.jpg",
-    "Fremantle": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Fremantle_FC_logo.svg/1200px-Fremantle_FC_logo.svg.png",
-    "Western Bulldogs": "https://upload.wikimedia.org/wikipedia/en/thumb/8/87/Western_Bulldogs_logo.svg/1200px-Western_Bulldogs_logo.svg.png"
+    "Lachie Neale": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Lachie_Neale_2019.1.jpg/800px-Lachie_Neale_2019.1.jpg",
+    "Errol Gulden": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Errol_Gulden_2023.1.jpg/800px-Errol_Gulden_2023.1.jpg",
+    "Josh Treacy": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e0/Fremantle_FC_logo.svg/200px-Fremantle_FC_logo.svg.png",
+    "Joe Daniher": "https://upload.wikimedia.org/wikipedia/en/thumb/d/d4/Brisbane_Lions_logo.svg/200px-Brisbane_Lions_logo.svg.png"
 }
 
-def get_crest_url(match_str):
+def get_bet_image(selection, match_str):
+    """Returns player headshot if player prop, or team crest if H2H/Line bet."""
+    for player, url in PLAYER_IMAGE_DATABASE.items():
+        if player in selection:
+            return url
+            
+    # Fallback to team crest logo
     parts = match_str.split(" vs ")
     if len(parts) > 0:
         return CREST_DATABASE.get(parts[0].strip().upper(), "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png")
     return "https://upload.wikimedia.org/wikipedia/en/thumb/e/e4/Australian_Football_League.svg/200px-Australian_Football_League.svg.png"
 
-def get_hero_img(selection):
-    for entity, url in IMAGE_DATABASE.items():
-        if entity in selection:
-            return url
-    return "https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=800&q=80"
-
 # -----------------------------------------------------------------------------
-# 3. Model Scoring Pipeline
+# 3. SCORING ENGINE & DATA PIPELINE
 # -----------------------------------------------------------------------------
 def calculate_implied_prob(odds):
     return 1 / odds if odds > 0 else 0
@@ -169,11 +174,13 @@ def rank_sportsbet_markets(markets_df, min_odds=1.20):
     df['implied_prob'] = df['odds'].apply(calculate_implied_prob)
     df['edge_%'] = ((df['projected_prob'] - df['implied_prob']) * 100).round(2)
     df['confidence_score'] = df.apply(calculate_confidence_score, axis=1)
-    df['crest_url'] = df['match'].apply(get_crest_url)
+    
+    # Generate dynamic image URL for every selection
+    df['bet_image'] = df.apply(lambda r: get_bet_image(r['selection'], r['match']), axis=1)
+    
     df = df.sort_values(by=['confidence_score', 'edge_%'], ascending=[False, False])
     return df
 
-# Data Loader
 @st.cache_data(ttl=300)
 def load_odds_data(file_path="data/latest_odds.json"):
     if os.path.exists(file_path):
@@ -183,33 +190,34 @@ def load_odds_data(file_path="data/latest_odds.json"):
         except Exception:
             pass
             
-    # Mock Current Round Data
+    # Mock Round 22 Active Data
     return pd.DataFrame([
         {"round": 22, "match": "MEL vs FRE", "market_type": "Player Disposals", "selection": "Caleb Serong 25+ Disposals", "odds": 1.28, "projected_prob": 0.85, "hit_rate_l10": 0.90, "matchup_factor": 1.10},
         {"round": 22, "match": "WBD vs NTH", "market_type": "Player Disposals", "selection": "Marcus Bontempelli 25+ Disposals", "odds": 1.30, "projected_prob": 0.82, "hit_rate_l10": 0.85, "matchup_factor": 1.10},
-        {"round": 22, "match": "MEL vs FRE", "market_type": "Total Goals", "selection": "Josh Treacy 2+ Goals", "odds": 1.40, "projected_prob": 0.77, "hit_rate_l10": 0.80, "matchup_factor": 1.15},
-        {"round": 22, "match": "MEL vs FRE", "market_type": "Head to Head", "selection": "Fremantle Win", "odds": 1.45, "projected_prob": 0.73, "hit_rate_l10": 0.75, "matchup_factor": 1.00},
         {"round": 22, "match": "BRI vs HAW", "market_type": "Player Disposals", "selection": "Lachie Neale 25+ Disposals", "odds": 1.35, "projected_prob": 0.80, "hit_rate_l10": 0.80, "matchup_factor": 1.05},
         {"round": 22, "match": "SYD vs PTA", "market_type": "Player Disposals", "selection": "Errol Gulden 25+ Disposals", "odds": 1.38, "projected_prob": 0.78, "hit_rate_l10": 0.80, "matchup_factor": 1.00},
+        {"round": 22, "match": "MEL vs FRE", "market_type": "Total Goals", "selection": "Josh Treacy 2+ Goals", "odds": 1.40, "projected_prob": 0.77, "hit_rate_l10": 0.80, "matchup_factor": 1.15},
+        {"round": 22, "match": "BRI vs HAW", "market_type": "Total Goals", "selection": "Joe Daniher 2+ Goals", "odds": 1.45, "projected_prob": 0.73, "hit_rate_l10": 0.70, "matchup_factor": 1.10},
+        {"round": 22, "match": "MEL vs FRE", "market_type": "Head to Head", "selection": "Fremantle Win", "odds": 1.45, "projected_prob": 0.73, "hit_rate_l10": 0.75, "matchup_factor": 1.00},
     ])
 
 # -----------------------------------------------------------------------------
-# 4. App UI Engine
+# 4. DASHBOARD RENDER ENGINE
 # -----------------------------------------------------------------------------
-st.title("⚡ AFL CYBER-HUD // COMMAND CENTER")
+st.title("⚡ LUCASBETS // CYBER-HUD COMMAND CENTER")
 st.caption("Quantum Value Analytics Engine • Sportsbet Active Markets $\\ge \\$1.20$")
 
 df_raw = load_odds_data()
 df_ranked = rank_sportsbet_markets(df_raw, min_odds=1.20)
 
-# Sidebar
-st.sidebar.header("🕹️ HUD PARAMETERS")
+# Sidebar Parameters
+st.sidebar.header("🕹️ TERMINAL PARAMETERS")
 selected_match = st.sidebar.selectbox("Match Select", ["All Round Matches"] + list(df_ranked["match"].unique()))
 min_odds_val, max_odds_val = st.sidebar.slider("Odds Band ($)", 1.20, 3.00, (1.20, 2.00), 0.05)
 selected_markets = st.sidebar.multiselect("Market Categories", list(df_ranked["market_type"].unique()), list(df_ranked["market_type"].unique()))
 min_conf_score = st.sidebar.slider("Min Confidence Index (%)", 50.0, 95.0, 65.0, 1.0)
 
-# Filtering
+# Filtering logic
 df_filtered = df_ranked[
     (df_ranked["odds"] >= min_odds_val) &
     (df_ranked["odds"] <= max_odds_val) &
@@ -222,17 +230,16 @@ if selected_match != "All Round Matches":
 
 df_filtered["rank"] = range(1, len(df_filtered) + 1)
 
-# --- HERO PICK (APPLY PULSE EFFECT) ---
+# --- HERO TOP PICK CARD ---
 if not df_filtered.empty:
     top = df_filtered.iloc[0]
-    hero_img = get_hero_img(top['selection'])
     
     st.markdown('<div class="hud-card hero-pulse">', unsafe_allow_html=True)
     c1, c2 = st.columns([1, 2.5])
     with c1:
-        st.image(hero_img, use_container_width=True)
+        st.image(top['bet_image'], use_container_width=True)
     with c2:
-        st.markdown('<span class="hud-badge">⚡ ALGORITHM TOP CONFIDENCE SELECTION</span>', unsafe_allow_html=True)
+        st.markdown('<span class="hud-badge">⚡ LUCASBETS ALGORITHM TOP SELECTION</span>', unsafe_allow_html=True)
         st.markdown(f"## {top['selection']}")
         st.markdown(f"**Fixture:** {top['match']} | **Market:** {top['market_type']}")
         
@@ -242,7 +249,7 @@ if not df_filtered.empty:
         k3.metric("Model Edge", f"{top['edge_%']:+.2f}%")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# HUD Metrics Panel
+# Metrics Grid
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Analyzed Markets", len(df_ranked))
 m2.metric("Qualifying Picks", len(df_filtered))
@@ -251,7 +258,7 @@ m4.metric("Avg Value Edge", f"{df_filtered['edge_%'].mean():.2f}%" if not df_fil
 
 st.divider()
 
-# Main Matrix & SGM Tabs
+# Main Interactive Matrix & SGM Tabs
 tab1, tab2, tab3 = st.tabs(["📊 Live Value Matrix", "🧩 SGM Engine", "🧬 Model Blueprint"])
 
 with tab1:
@@ -260,10 +267,10 @@ with tab1:
         st.info("No market selections match current filter criteria.")
     else:
         st.dataframe(
-            df_filtered[['rank', 'crest_url', 'match', 'market_type', 'selection', 'odds', 'confidence_score', 'edge_%']],
+            df_filtered[['rank', 'bet_image', 'match', 'market_type', 'selection', 'odds', 'confidence_score', 'edge_%']],
             column_config={
                 "rank": st.column_config.NumberColumn("Rank", format="#%d"),
-                "crest_url": st.column_config.ImageColumn("Crest", help="Team Crest Logo"),
+                "bet_image": st.column_config.ImageColumn("Visual", help="Player Headshot or Club Crest"),
                 "match": "Fixture",
                 "market_type": "Market",
                 "selection": "Selection Name",
@@ -296,8 +303,8 @@ with tab2:
 
 with tab3:
     st.markdown("""
-    ### Quantum Evaluation Engine
+    ### Lucasbets Model Evaluation Architecture
     * **Model Projected Probability (50%):** Weighted rating via Squiggle API + team projected ratings.
-    * **Historical Cover Rate (35%):** Player/Line cover frequency across last 10 games.
+    * **Historical Cover Frequency (35%):** Player/Line cover rate across last 10 games.
     * **Matchup Defense Rating (15%):** Opponent concession indexes for specific key stats.
     """)
