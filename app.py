@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import json
 import os
+from datetime import datetime
 
 # Set page configuration
 st.set_page_config(
@@ -16,34 +17,46 @@ st.set_page_config(
 # Ranking & Scoring Functions
 # -----------------------------------------------------------------------------
 def calculate_implied_prob(odds):
-    """Converts decimal odds to implied probability."""
     return 1 / odds if odds > 0 else 0
 
 def calculate_confidence_score(row):
-    """Calculates composite confidence score (0 to 100%)."""
     proj_prob = row['projected_prob']
     hit_rate = row.get('hit_rate_l10', proj_prob)
     matchup = row.get('matchup_factor', 1.0)
     
-    # Weighted composite score
     raw_score = (0.50 * proj_prob) + (0.35 * hit_rate) + (0.15 * (proj_prob * matchup))
-    
-    # Calculate edge against Sportsbet odds
     implied_prob = calculate_implied_prob(row['odds'])
     edge = proj_prob - implied_prob
     
-    # Boost/penalize score based on positive edge
     final_confidence = np.clip(raw_score * (1 + (edge * 0.5)), 0, 1)
     return round(final_confidence * 100, 1)
 
 def rank_sportsbet_markets(markets_df, min_odds=1.20):
-    """Filters and ranks all Sportsbet markets for the current AFL round."""
     df = markets_df[markets_df['odds'] >= min_odds].copy()
     df['implied_prob'] = df['odds'].apply(calculate_implied_prob)
     df['edge_%'] = ((df['projected_prob'] - df['implied_prob']) * 100).round(2)
     df['confidence_score'] = df.apply(calculate_confidence_score, axis=1)
     df = df.sort_values(by=['confidence_score', 'edge_%'], ascending=[False, False])
-    df['rank'] = range(1, len(df) + 1)
+    return df
+
+# -----------------------------------------------------------------------------
+# Current Round Filter Logic
+# -----------------------------------------------------------------------------
+def filter_to_current_round(df):
+    """
+    Ensures the dashboard only displays markets for the ACTIVE current round,
+    filtering out completed games from previous weekends or future rounds.
+    """
+    if df.empty:
+        return df
+    
+    # If a 'round' column exists in JSON from GitHub Actions, pick the active round
+    if 'round' in df.columns:
+        current_active_round = df['round'].min() # Or max upcoming active round number
+        df = df[df['round'] == current_active_round]
+    elif 'is_completed' in df.columns:
+        df = df[df['is_completed'] == False]
+        
     return df
 
 # -----------------------------------------------------------------------------
@@ -60,14 +73,16 @@ def load_odds_data(file_path="data/latest_odds.json"):
             st.error(f"Error reading {file_path}: {e}")
             return pd.DataFrame()
     else:
-        # Fallback Mock Data if JSON is missing
+        # Fallback Mock Data updated specifically for Current Round 22 Fixtures
         mock_data = [
-            {"match": "Fremantle vs WBD", "market_type": "Player Disposals", "selection": "Caleb Serong 25+ Disposals", "odds": 1.28, "projected_prob": 0.84, "hit_rate_l10": 0.90, "matchup_factor": 1.1},
-            {"match": "Fremantle vs WBD", "market_type": "Total Goals", "selection": "Josh Treacy 2+ Goals", "odds": 1.38, "projected_prob": 0.78, "hit_rate_l10": 0.80, "matchup_factor": 1.15},
-            {"match": "Fremantle vs WBD", "market_type": "Line / Margin", "selection": "Fremantle -18.5 Line", "odds": 1.35, "projected_prob": 0.76, "hit_rate_l10": 0.70, "matchup_factor": 1.05},
-            {"match": "Fremantle vs WBD", "market_type": "Player Disposals", "selection": "Andrew Brayshaw 25+ Disposals", "odds": 1.40, "projected_prob": 0.75, "hit_rate_l10": 0.80, "matchup_factor": 1.0},
-            {"match": "Fremantle vs WBD", "market_type": "Player Disposals", "selection": "Marcus Bontempelli 25+ Disposals", "odds": 1.52, "projected_prob": 0.71, "hit_rate_l10": 0.70, "matchup_factor": 1.05},
-            {"match": "Fremantle vs WBD", "market_type": "Head to Head", "selection": "Fremantle Win", "odds": 1.45, "projected_prob": 0.72, "hit_rate_l10": 0.75, "matchup_factor": 1.0},
+            {"round": 22, "match": "WBD vs NTH", "market_type": "Player Disposals", "selection": "Marcus Bontempelli 25+ Disposals", "odds": 1.30, "projected_prob": 0.82, "hit_rate_l10": 0.85, "matchup_factor": 1.10},
+            {"round": 22, "match": "WBD vs NTH", "market_type": "Player Disposals", "selection": "Tom Liberatore 25+ Disposals", "odds": 1.42, "projected_prob": 0.76, "hit_rate_l10": 0.80, "matchup_factor": 1.05},
+            {"round": 22, "match": "MEL vs FRE", "market_type": "Player Disposals", "selection": "Caleb Serong 25+ Disposals", "odds": 1.28, "projected_prob": 0.85, "hit_rate_l10": 0.90, "matchup_factor": 1.10},
+            {"round": 22, "match": "MEL vs FRE", "market_type": "Total Goals", "selection": "Josh Treacy 2+ Goals", "odds": 1.40, "projected_prob": 0.77, "hit_rate_l10": 0.80, "matchup_factor": 1.15},
+            {"round": 22, "match": "MEL vs FRE", "market_type": "Line / Margin", "selection": "Fremantle -6.5 Line", "odds": 1.55, "projected_prob": 0.71, "hit_rate_l10": 0.75, "matchup_factor": 1.05},
+            {"round": 22, "match": "BRI vs HAW", "market_type": "Player Disposals", "selection": "Lachie Neale 25+ Disposals", "odds": 1.35, "projected_prob": 0.80, "hit_rate_l10": 0.80, "matchup_factor": 1.05},
+            {"round": 22, "match": "BRI vs HAW", "market_type": "Total Goals", "selection": "Joe Daniher 2+ Goals", "odds": 1.45, "projected_prob": 0.73, "hit_rate_l10": 0.70, "matchup_factor": 1.10},
+            {"round": 22, "match": "SYD vs PTA", "market_type": "Player Disposals", "selection": "Errol Gulden 25+ Disposals", "odds": 1.38, "projected_prob": 0.78, "hit_rate_l10": 0.80, "matchup_factor": 1.00},
         ]
         return pd.DataFrame(mock_data)
 
@@ -75,19 +90,24 @@ def load_odds_data(file_path="data/latest_odds.json"):
 # Main Application Layout
 # -----------------------------------------------------------------------------
 st.title("🏉 AFL Sportsbet Value & Confidence Tracker")
-st.markdown("Automated confidence ranking and value calculation for all AFL market selections $\\ge \\$1.20$.")
+st.markdown("Automated confidence ranking and value calculation for all **Current Round** AFL market selections $\\ge \\$1.20$.")
 
+# Load and filter raw data to current active round
 df_raw = load_odds_data()
+df_current_round = filter_to_current_round(df_raw)
 
-if df_raw.empty:
-    st.warning("No betting data currently available. Check GitHub Actions pipeline status.")
+if df_current_round.empty:
+    st.warning("No current round betting data available. Check GitHub Actions pipeline status.")
     st.stop()
 
-df_ranked = rank_sportsbet_markets(df_raw, min_odds=1.20)
+# Run through confidence ranking engine
+df_ranked = rank_sportsbet_markets(df_current_round, min_odds=1.20)
 
-# Sidebar Controls
+# Sidebar Controls & Filters
 st.sidebar.header("🎯 Analytics Controls")
-available_matches = ["All Matches"] + list(df_ranked["match"].unique())
+
+# Match Selector for Current Round
+available_matches = ["All Current Round Matches"] + list(df_ranked["match"].unique())
 selected_match = st.sidebar.selectbox("Select Match", available_matches)
 
 min_odds_val, max_odds_val = st.sidebar.slider(
@@ -121,15 +141,15 @@ df_filtered = df_ranked[
     (df_ranked["confidence_score"] >= min_conf_score)
 ]
 
-if selected_match != "All Matches":
+if selected_match != "All Current Round Matches":
     df_filtered = df_filtered[df_filtered["match"] == selected_match]
 
 df_filtered = df_filtered.copy()
 df_filtered["rank"] = range(1, len(df_filtered) + 1)
 
-# Metrics Header
+# Summary Metrics Header
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Total Markets Analyzed", len(df_ranked))
+m1.metric("Current Round Markets", len(df_ranked))
 m2.metric("Qualifying Markets", len(df_filtered))
 
 if not df_filtered.empty:
@@ -139,7 +159,7 @@ if not df_filtered.empty:
 
 st.divider()
 
-# Tabs
+# Main Content Tabs
 tab1, tab2, tab3 = st.tabs(["🏆 Ranked Confidence Board", "🧩 Same Game Multi Generator", "ℹ️ Model Methodology"])
 
 with tab1:
@@ -172,7 +192,7 @@ with tab2:
     col_sgm1, col_sgm2 = st.columns([1, 2])
 
     with col_sgm1:
-        sgm_match = st.selectbox("Select Match for Multi", [m for m in available_matches if m != "All Matches"])
+        sgm_match = st.selectbox("Select Match for Multi", [m for m in available_matches if m != "All Current Round Matches"])
         target_multi_odds = st.number_input("Target Total Odds ($)", min_value=1.50, max_value=10.00, value=2.00, step=0.10)
         num_legs = st.slider("Target Number of Legs", min_value=2, max_value=4, value=2)
 
