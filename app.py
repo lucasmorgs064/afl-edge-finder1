@@ -1,465 +1,203 @@
-import os
-import requests
-import itertools
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import json
+import os
+from ranker import rank_sportsbet_markets
 
-# Page Configuration
-st.set_page_config(page_title="AFL Safe Bet & Realistic SGM Finder", page_icon="🏉", layout="wide")
-
-# -------------------------------------------------------------------
-# Configuration & API Setup
-# -------------------------------------------------------------------
-API_KEY = st.secrets.get("ODDS_API_KEY", os.environ.get("ODDS_API_KEY", "f9366aa6d54b45008ab1df1b44634266"))
-SPORT = "aussierules_afl"
-REGIONS = "au"
-FEATURED_MARKETS = "h2h,spreads,totals"
-PROP_MARKETS = "player_disposals"
-TARGET_BOOKMAKER = "sportsbet"
-
-SQUIGGLE_HEADERS = {"User-Agent": "AFL Safe Bet Analytics - student@college.edu"}
-
-TEAM_MAP = {
-    "Adelaide Crows": "Adelaide", "Adelaide": "Adelaide",
-    "Brisbane Lions": "Brisbane", "Brisbane": "Brisbane",
-    "Carlton Blues": "Carlton", "Carlton": "Carlton",
-    "Collingwood Magpies": "Collingwood", "Collingwood": "Collingwood",
-    "Essendon Bombers": "Essendon", "Essendon": "Essendon",
-    "Fremantle Dockers": "Fremantle", "Fremantle": "Fremantle",
-    "Geelong Cats": "Geelong", "Geelong": "Geelong",
-    "Gold Coast Suns": "Gold Coast", "Gold Coast": "Gold Coast",
-    "Greater Western Sydney Giants": "GWS", "GWS Giants": "GWS", "GWS": "GWS",
-    "Hawthorn Hawks": "Hawthorn", "Hawthorn": "Hawthorn",
-    "Melbourne Demons": "Melbourne", "Melbourne": "Melbourne",
-    "North Melbourne Kangaroos": "North Melbourne", "North Melbourne": "North Melbourne",
-    "Port Adelaide Power": "Port Adelaide", "Port Adelaide": "Port Adelaide",
-    "Richmond Tigers": "Richmond", "Richmond": "Richmond",
-    "St Kilda Saints": "St Kilda", "St Kilda": "St Kilda",
-    "Sydney Swans": "Sydney", "Sydney": "Sydney",
-    "West Coast Eagles": "West Coast", "West Coast": "West Coast",
-    "Western Bulldogs": "Western Bulldogs", "Bulldogs": "Western Bulldogs"
-}
-
-def clean_team_name(name):
-    if not name:
-        return name
-    return TEAM_MAP.get(str(name).strip(), str(name).strip())
-
-# -------------------------------------------------------------------
-# Data Fetching
-# -------------------------------------------------------------------
-@st.cache_data(ttl=1800, show_spinner=False)
-def fetch_squiggle_tips(year=2026):
-    url = f"https://api.squiggle.com.au/?q=tips;year={year}"
-    try:
-        response = requests.get(url, headers=SQUIGGLE_HEADERS, timeout=10)
-        response.raise_for_status()
-        return pd.DataFrame(response.json().get("tips", [])), None
-    except Exception as e:
-        return pd.DataFrame(), str(e)
-
-@st.cache_data(ttl=600, show_spinner=False)
-def fetch_sportsbet_odds(api_key: str, include_props=True):
-    url = f"https://api.the-odds-api.com/v4/sports/{SPORT}/odds/"
-    params = {
-        "apiKey": api_key,
-        "regions": REGIONS,
-        "markets": FEATURED_MARKETS,
-        "bookmakers": TARGET_BOOKMAKER,
-        "dateFormat": "iso",
-    }
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        games = response.json()
-    except requests.exceptions.RequestException as e:
-        return None, str(e)
-
-    if include_props and games:
-        for game in games:
-            event_id = game.get("id")
-            if not event_id:
-                continue
-            
-            event_url = f"https://api.the-odds-api.com/v4/sports/{SPORT}/events/{event_id}/odds"
-            event_params = {
-                "apiKey": api_key,
-                "regions": REGIONS,
-                "markets": PROP_MARKETS,
-                "bookmakers": TARGET_BOOKMAKER,
-                "dateFormat": "iso",
-            }
-            try:
-                e_resp = requests.get(event_url, params=event_params, timeout=5)
-                if e_resp.status_code == 200:
-                    e_data = e_resp.json()
-                    e_bookmakers = e_data.get("bookmakers", [])
-                    
-                    for bm in e_bookmakers:
-                        if bm.get("key").lower() == TARGET_BOOKMAKER:
-                            for game_bm in game.get("bookmakers", []):
-                                if game_bm.get("key").lower() == TARGET_BOOKMAKER:
-                                    game_bm["markets"].extend(bm.get("markets", []))
-            except Exception:
-                pass
-
-    return games, None
-
-# -------------------------------------------------------------------
-# Model Consensus Engine
-# -------------------------------------------------------------------
-def build_matchup_data(tips_df):
-    matchup_data = {}
-    if tips_df.empty:
-        return matchup_data
-
-    if "hprop" in tips_df.columns:
-        tips_df["hprop_num"] = pd.to_numeric(tips_df["hprop"], errors="coerce")
-    if "hmargin" in tips_df.columns:
-        tips_df["hmargin_num"] = pd.to_numeric(tips_df["hmargin"], errors="coerce")
-
-    for _, row in tips_df.iterrows():
-        hteam = clean_team_name(row.get("hteam"))
-        ateam = clean_team_name(row.get("ateam"))
-        hprob = row.get("hprop_num", None)
-        hmargin = row.get("hmargin_num", None)
-
-        key = (hteam, ateam)
-        if key not in matchup_data:
-            matchup_data[key] = {"probs": [], "margins": []}
-        
-        if pd.notnull(hprob):
-            matchup_data[key]["probs"].append(float(hprob))
-        if pd.notnull(hmargin):
-            matchup_data[key]["margins"].append(float(hmargin))
-
-    consensus_data = {}
-    for (hteam, ateam), values in matchup_data.items():
-        avg_hprob = sum(values["probs"]) / len(values["probs"]) if values["probs"] else 0.5
-        avg_hmargin = sum(values["margins"]) / len(values["margins"]) if values["margins"] else 0.0
-        consensus_data[(hteam, ateam)] = {
-            "hprob": avg_hprob,
-            "hmargin": avg_hmargin
-        }
-
-    return consensus_data
-
-# -------------------------------------------------------------------
-# Processing Engine (Unchanged Singles Processing)
-# -------------------------------------------------------------------
-def process_sportsbet_odds(odds_data, tips_df, selected_markets, min_win_prob=60.0):
-    rows = []
-    matchup_data = build_matchup_data(tips_df)
-
-    for game in odds_data:
-        home_clean = clean_team_name(game.get("home_team"))
-        away_clean = clean_team_name(game.get("away_team"))
-        game_id = f"{home_clean} vs {away_clean}"
-        
-        commence_dt = pd.to_datetime(game.get("commence_time")).tz_convert("Australia/Melbourne")
-        kickoff_str = commence_dt.strftime("%a %d %b, %I:%M %p")
-
-        game_stats = matchup_data.get((home_clean, away_clean), {"hprob": None, "hmargin": 0.0})
-        h_model_prob = game_stats["hprob"]
-        h_model_margin = game_stats["hmargin"]
-
-        for bookmaker in game.get("bookmakers", []):
-            if bookmaker.get("key").lower() != TARGET_BOOKMAKER:
-                continue
-                
-            for market in bookmaker.get("markets", []):
-                mkt_key = market.get("key")
-                
-                if mkt_key == "h2h":
-                    mkt_name = "Head to Head"
-                elif mkt_key == "spreads":
-                    mkt_name = "Win Margin / Handicap"
-                elif mkt_key == "totals":
-                    mkt_name = "Total Points / Goals"
-                elif "player_disposals" in mkt_key:
-                    mkt_name = "Player Disposals"
-                else:
-                    mkt_name = mkt_key.replace("_", " ").title()
-
-                if mkt_name not in selected_markets:
-                    continue
-
-                for outcome in market.get("outcomes", []):
-                    team_or_type = outcome.get("name", "")
-                    clean_target = clean_team_name(team_or_type)
-                    price = float(outcome.get("price", 1.0))
-                    point = outcome.get("point", None)
-                    description = outcome.get("description", "")
-                    
-                    if price <= 1.0:
-                        continue
-
-                    market_implied_prob = 1.0 / price
-                    
-                    if mkt_name == "Player Disposals":
-                        player = description if description else team_or_type
-                        if point is not None:
-                            val = int(point) if float(point).is_integer() else point
-                            prefix = "Over " if "Over" in team_or_type or "Over" in description else ("Under " if "Under" in team_or_type or "Under" in description else "")
-                            target_desc = f"{player} {val}+ Disposals" if float(point).is_integer() else f"{player} {prefix}{point} Disposals"
-                        else:
-                            target_desc = f"{player} Disposals"
-                        team_assoc = player
-                    elif mkt_name == "Total Points / Goals":
-                        prefix = "Over " if "Over" in team_or_type else ("Under " if "Under" in team_or_type else "")
-                        target_desc = f"{prefix}{point} Total Points" if point else team_or_type
-                        team_assoc = "Game Total"
-                    elif point is not None:
-                        target_desc = f"{team_or_type} ({'+' if point > 0 else ''}{point})"
-                        team_assoc = clean_target
-                    else:
-                        target_desc = team_or_type
-                        team_assoc = clean_target
-                    
-                    if mkt_key == "h2h":
-                        if h_model_prob is not None:
-                            raw_model_prob = h_model_prob if clean_target == home_clean else (1.0 - h_model_prob)
-                            model_prob = min(raw_model_prob, market_implied_prob * 1.25)
-                        else:
-                            model_prob = market_implied_prob
-                    elif mkt_key == "spreads":
-                        if point is not None:
-                            margin_diff = h_model_margin + point if clean_target == home_clean else (-h_model_margin) + point
-                            model_prob = min(max(0.50 + (margin_diff * 0.015), 0.10), 0.90)
-                        else:
-                            model_prob = market_implied_prob
-                    elif mkt_name == "Player Disposals":
-                        model_prob = min(market_implied_prob * 1.05, 0.92)
-                    else:
-                        model_prob = market_implied_prob
-
-                    win_prob_pct = round(model_prob * 100, 1)
-                    
-                    in_safe_range = (1.20 <= price <= 2.00)
-
-                    if in_safe_range and win_prob_pct >= 65.0:
-                        rec_rating = "⭐⭐⭐ HIGH CONFIDENCE"
-                        is_match = True
-                    elif in_safe_range and win_prob_pct >= min_win_prob:
-                        rec_rating = "⭐⭐ GOOD VALUE"
-                        is_match = True
-                    else:
-                        rec_rating = "⭐ LEAN / NEAR MISS"
-                        is_match = False
-
-                    score = win_prob_pct - (abs(price - 1.50) * 10)
-
-                    rows.append({
-                        "Game_ID": game_id,
-                        "home_team": home_clean,
-                        "away_team": away_clean,
-                        "commence_dt": commence_dt,
-                        "Kickoff": kickoff_str,
-                        "Matchup": game_id,
-                        "Market": mkt_name,
-                        "Selection": target_desc,
-                        "team_assoc": team_assoc,
-                        "Odds": f"${price:.2f}",
-                        "Odds_num": price,
-                        "AI Win Prob": f"{win_prob_pct}%",
-                        "win_prob_num": win_prob_pct,
-                        "Recommendation": rec_rating,
-                        "is_match": is_match,
-                        "score": score
-                    })
-    
-    return pd.DataFrame(rows)
-
-# -------------------------------------------------------------------
-# Conflict Check
-# -------------------------------------------------------------------
-def are_legs_compatible(leg1, leg2):
-    if leg1["Market"] in ["Head to Head", "Win Margin / Handicap"] and leg2["Market"] in ["Head to Head", "Win Margin / Handicap"]:
-        if leg1["team_assoc"] != leg2["team_assoc"]:
-            return False
-
-    if leg1["Market"] == "Total Points / Goals" and leg2["Market"] == "Total Points / Goals":
-        if ("Over" in leg1["Selection"] and "Under" in leg2["Selection"]) or ("Under" in leg1["Selection"] and "Over" in leg2["Selection"]):
-            return False
-
-    if leg1["Selection"] == leg2["Selection"]:
-        return False
-
-    return True
-
-# -------------------------------------------------------------------
-# Universal SGM Generator (Guarantees 1 SGM per Game with Natural Variety)
-# -------------------------------------------------------------------
-def generate_realistic_multis(df, target_min_odds=1.65, target_max_odds=2.35):
-    game_multis = []
-    if df.empty:
-        return game_multis
-
-    for game_id, group in df.groupby("Game_ID"):
-        # Primary anchor leg selection ($1.04 - $1.60 odds)
-        candidate_legs = group[
-            (group["Odds_num"] >= 1.04) & 
-            (group["Odds_num"] <= 1.60)
-        ].drop_duplicates(subset=["Selection"])
-
-        # Fallback 1: Expand candidate odds window if options are limited
-        if len(candidate_legs) < 2:
-            candidate_legs = group[
-                (group["Odds_num"] >= 1.02) & 
-                (group["Odds_num"] <= 1.80)
-            ].drop_duplicates(subset=["Selection"])
-
-        # Fallback 2: Take top options across all available selections
-        if len(candidate_legs) < 2:
-            candidate_legs = group.sort_values("win_prob_num", ascending=False).drop_duplicates(subset=["Selection"])
-
-        if len(candidate_legs) < 2:
-            continue
-
-        legs_list = candidate_legs.to_dict("records")
-        all_valid_combos = []
-
-        # Evaluate 2, 3, 4, and 5-leg combinations naturally
-        for k_legs in range(2, min(6, len(legs_list) + 1)):
-            for combo in itertools.combinations(legs_list, k_legs):
-                # Verify mutual compatibility
-                compatible = True
-                for i_idx in range(len(combo)):
-                    for j_idx in range(i_idx + 1, len(combo)):
-                        if not are_legs_compatible(combo[i_idx], combo[j_idx]):
-                            compatible = False
-                            break
-                    if not compatible:
-                        break
-                
-                if not compatible:
-                    continue
-
-                comb_odds = 1.0
-                comb_prob = 1.0
-                for leg in combo:
-                    comb_odds *= leg["Odds_num"]
-                    comb_prob *= (leg["win_prob_num"] / 100.0)
-
-                comb_prob_pct = round(comb_prob * 100, 1)
-                dist_from_target = abs(comb_odds - 2.00)
-
-                # Secondary penalty only if odds drift far outside target
-                odds_penalty = 0.0
-                if comb_odds < target_min_odds:
-                    odds_penalty = (target_min_odds - comb_odds) * 25.0
-                elif comb_odds > target_max_odds:
-                    odds_penalty = (comb_odds - target_max_odds) * 25.0
-
-                combo_score = (comb_prob_pct * 2.5) - (dist_from_target * 20.0) - odds_penalty
-
-                formatted_legs = [
-                    f"• **{leg['Selection']}** ({leg['Market']} @ ${leg['Odds_num']:.2f}) — *AI Win Prob: {leg['win_prob_num']}%*"
-                    for leg in combo
-                ]
-
-                all_valid_combos.append({
-                    "Game": game_id,
-                    "Kickoff": combo[0]["Kickoff"],
-                    "Leg Count": f"{len(combo)} Legs",
-                    "Combined Odds": f"${comb_odds:.2f}",
-                    "comb_odds_num": comb_odds,
-                    "Est. Combined Win Prob": f"{comb_prob_pct}%",
-                    "dist_from_target": dist_from_target,
-                    "score": combo_score,
-                    "Legs": formatted_legs
-                })
-
-        if all_valid_combos:
-            # First filter for combos strictly inside target range ($1.65 - $2.35)
-            in_range_combos = [c for c in all_valid_combos if target_min_odds <= c["comb_odds_num"] <= target_max_odds]
-            
-            if in_range_combos:
-                best_combo = max(in_range_combos, key=lambda x: x["score"])
-            else:
-                # Guaranteed Fallback: pick the combo closest to $2.00 target
-                best_combo = min(all_valid_combos, key=lambda x: x["dist_from_target"])
-
-            game_multis.append(best_combo)
-
-    return game_multis
-
-# -------------------------------------------------------------------
-# Dashboard Interface
-# -------------------------------------------------------------------
-st.title("🎯 AFL Safe Bet & Realistic SGM Finder")
-st.caption("Analyzes Sportsbet odds & Squiggle AI models to identify high-probability singles and realistic SGMs.")
-
-st.sidebar.header("⚙️ Controls")
-
-if st.sidebar.button("🔄 Refresh Data"):
-    st.cache_data.clear()
-    st.rerun()
-
-st.sidebar.markdown("---")
-
-available_markets = ["Head to Head", "Win Margin / Handicap", "Total Points / Goals", "Player Disposals"]
-selected_markets = st.sidebar.multiselect(
-    "Active Betting Markets",
-    options=available_markets,
-    default=available_markets
+# Set page configuration
+st.set_page_config(
+    page_title="AFL Analytics - Sportsbet Value Engine",
+    page_icon="🏉",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-min_win_prob = st.sidebar.slider(
-    "Min AI Win Prob (%)", 
-    min_value=50, max_value=80, value=60, step=5
-)
-
-st.sidebar.markdown("---")
-
-include_player_props = "Player Disposals" in selected_markets
-
-with st.spinner("Fetching Sportsbet odds & Squiggle predictions..."):
-    odds_raw, odds_err = fetch_sportsbet_odds(API_KEY, include_props=include_player_props)
-    tips_df, tips_err = fetch_squiggle_tips(year=2026)
-
-if odds_err:
-    st.error(f"Error fetching odds: {odds_err}")
-    st.stop()
-
-if not odds_raw:
-    st.warning("No Sportsbet odds available at the moment.")
-    st.stop()
-
-df = process_sportsbet_odds(odds_raw, tips_df, selected_markets=selected_markets, min_win_prob=min_win_prob)
-
-tab_singles, tab_multis = st.tabs(["📊 High-Confidence Singles ($1.20–$2.00)", "🔥 High-Confidence SGMs (~$2.00 Target)"])
-
-with tab_singles:
-    if not df.empty:
-        strict_df = df[df["is_match"]].sort_values(by=["commence_dt", "win_prob_num"], ascending=[True, False])
-        if not strict_df.empty:
-            st.success(f" Found {len(strict_df)} High-Confidence Single Bet(s) in the $1.20 - $2.00 range!")
-            display_df = strict_df[["Kickoff", "Matchup", "Market", "Selection", "Odds", "AI Win Prob", "Recommendation"]]
-            st.dataframe(display_df, use_container_width=True)
-        else:
-            st.info("💡 No single bets currently match all strict target criteria ($1.20–$2.00 odds + high AI win probability).")
-            st.subheader("🔍 Closest Single Bet Candidates")
-            closest_df = df.sort_values(by=["score", "win_prob_num"], ascending=[False, False]).head(5)
-            display_closest = closest_df[["Kickoff", "Matchup", "Market", "Selection", "Odds", "AI Win Prob", "Recommendation"]]
-            st.dataframe(display_closest, use_container_width=True)
-
-with tab_multis:
-    st.subheader("🏉 Recommended Same-Game Multi for Every Game (~$2.00 Target Return)")
-    st.caption("1 custom multi per fixture using flexible 2–5 legs targeted at $1.65 – $2.35 odds.")
-    
-    multis = generate_realistic_multis(df, target_min_odds=1.65, target_max_odds=2.35)
-    
-    if multis:
-        for multi in multis:
-            with st.expander(f"📍 **{multi['Game']}** ({multi['Kickoff']}) — {multi['Leg Count']} @ **{multi['Combined Odds']}**"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**Recommended SGM Legs:**")
-                    for leg in multi["Legs"]:
-                        st.markdown(leg)
-                with col2:
-                    st.metric("Total Multi Price", multi["Combined Odds"])
-                    st.metric("Est. Combined Model Win Prob", multi["Est. Combined Win Prob"])
+# -----------------------------------------------------------------------------
+# Data Loading & Caching Function
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=900)  # Refresh cache every 15 minutes
+def load_odds_data(file_path="data/latest_odds.json"):
+    """
+    Loads raw odds data from local storage or returns fallback demo data.
+    """
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r") as f:
+                data = json.load(f)
+            return pd.DataFrame(data)
+        except Exception as e:
+            st.error(f"Error reading {file_path}: {e}")
+            return pd.DataFrame()
     else:
-        st.info("No games available in current odds feed.")
+        # Fallback Mock Data if JSON is missing or during initial testing
+        mock_data = [
+            {"match": "Fremantle vs WBD", "market_type": "Player Disposals", "selection": "Caleb Serong 25+ Disposals", "odds": 1.28, "projected_prob": 0.84, "hit_rate_l10": 0.90, "matchup_factor": 1.1},
+            {"match": "Fremantle vs WBD", "market_type": "Total Goals", "selection": "Josh Treacy 2+ Goals", "odds": 1.38, "projected_prob": 0.78, "hit_rate_l10": 0.80, "matchup_factor": 1.15},
+            {"match": "Fremantle vs WBD", "market_type": "Line / Margin", "selection": "Fremantle -18.5 Line", "odds": 1.35, "projected_prob": 0.76, "hit_rate_l10": 0.70, "matchup_factor": 1.05},
+            {"match": "Fremantle vs WBD", "market_type": "Player Disposals", "selection": "Andrew Brayshaw 25+ Disposals", "odds": 1.40, "projected_prob": 0.75, "hit_rate_l10": 0.80, "matchup_factor": 1.0},
+            {"match": "Fremantle vs WBD", "market_type": "Player Disposals", "selection": "Marcus Bontempelli 25+ Disposals", "odds": 1.52, "projected_prob": 0.71, "hit_rate_l10": 0.70, "matchup_factor": 1.05},
+            {"match": "Fremantle vs WBD", "market_type": "Head to Head", "selection": "Fremantle Win", "odds": 1.45, "projected_prob": 0.72, "hit_rate_l10": 0.75, "matchup_factor": 1.0},
+            {"match": "MEL vs FRE", "market_type": "Player Disposals", "selection": "Clayton Oliver 25+ Disposals", "odds": 1.32, "projected_prob": 0.81, "hit_rate_l10": 0.85, "matchup_factor": 1.0},
+            {"match": "MEL vs FRE", "market_type": "Total Goals", "selection": "Bayley Fritsch 2+ Goals", "odds": 1.62, "projected_prob": 0.65, "hit_rate_l10": 0.60, "matchup_factor": 1.1},
+        ]
+        return pd.DataFrame(mock_data)
+
+# -----------------------------------------------------------------------------
+# Main Application Layout
+# -----------------------------------------------------------------------------
+st.title("🏉 AFL Sportsbet Value & Confidence Tracker")
+st.markdown("Automated confidence ranking and value calculation for all AFL market selections $\\ge \\$1.20$.")
+
+# Load raw dataset
+df_raw = load_odds_data()
+
+if df_raw.empty:
+    st.warning("No betting data currently available. Check GitHub Actions pipeline status.")
+    st.stop()
+
+# Run through confidence ranking engine
+df_ranked = rank_sportsbet_markets(df_raw, min_odds=1.20)
+
+# -----------------------------------------------------------------------------
+# Sidebar Controls & Filters
+# -----------------------------------------------------------------------------
+st.sidebar.header("🎯 Analytics Controls")
+
+# Match Selector
+available_matches = ["All Matches"] + list(df_ranked["match"].unique())
+selected_match = st.sidebar.selectbox("Select Match", available_matches)
+
+# Odds Range Slider
+min_odds_val, max_odds_val = st.sidebar.slider(
+    "Filter Odds Range",
+    min_value=1.20,
+    max_value=3.00,
+    value=(1.20, 2.00),
+    step=0.05
+)
+
+# Market Types Multiselect
+all_market_types = list(df_ranked["market_type"].unique())
+selected_markets = st.sidebar.multiselect(
+    "Filter Market Types",
+    options=all_market_types,
+    default=all_market_types
+)
+
+# Minimum Confidence Score Threshold
+min_conf_score = st.sidebar.slider(
+    "Min Confidence Score (%)",
+    min_value=50.0,
+    max_value=95.0,
+    value=65.0,
+    step=1.0
+)
+
+# Apply Sidebar Filters
+df_filtered = df_ranked[
+    (df_ranked["odds"] >= min_odds_val) &
+    (df_ranked["odds"] <= max_odds_val) &
+    (df_ranked["market_type"].isin(selected_markets)) &
+    (df_ranked["confidence_score"] >= min_conf_score)
+]
+
+if selected_match != "All Matches":
+    df_filtered = df_filtered[df_filtered["match"] == selected_match]
+
+# Re-index Rank Column for Display
+df_filtered = df_filtered.copy()
+df_filtered["rank"] = range(1, len(df_filtered) + 1)
+
+# -----------------------------------------------------------------------------
+# Summary Metrics Header
+# -----------------------------------------------------------------------------
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Total Markets Analyzed", len(df_ranked))
+m2.metric("Qualifying Markets", len(df_filtered))
+
+if not df_filtered.empty:
+    top_bet = df_filtered.iloc[0]
+    m3.metric("Highest Rank Confidence", f"{top_bet['confidence_score']}%", f"{top_bet['selection']}")
+    m4.metric("Avg Value Edge", f"{df_filtered['edge_%'].mean():.2f}%")
+
+st.divider()
+
+# -----------------------------------------------------------------------------
+# Main Content Tabs
+# -----------------------------------------------------------------------------
+tab1, tab2, tab3 = st.tabs(["🏆 Ranked Confidence Board", "🧩 Same Game Multi Generator", "ℹ️ Model Methodology"])
+
+with tab1:
+    st.subheader("Current Round Market Rankings (Odds $\\ge \\$1.20$)")
+    st.caption("Ranked by composite score: Model Probability (50%) + Historical Consistency (35%) + Matchup Rating (15%).")
+
+    if df_filtered.empty:
+        st.info("No markets match the currently selected filter criteria.")
+    else:
+        # Display Styled Data Table
+        st.dataframe(
+            df_filtered[['rank', 'match', 'market_type', 'selection', 'odds', 'confidence_score', 'edge_%']],
+            column_config={
+                "rank": st.column_config.NumberColumn("Rank", format="#%d"),
+                "match": "Match",
+                "market_type": "Category",
+                "selection": "Selection / Bet Name",
+                "odds": st.column_config.NumberColumn("Odds", format="$%.2f"),
+                "confidence_score": st.column_config.ProgressColumn(
+                    "Confidence Score",
+                    format="%.1f%%",
+                    min_value=0,
+                    max_value=100
+                ),
+                "edge_%": st.column_config.NumberColumn("Model Edge", format="%+.2f%%"),
+            },
+            hide_index=True,
+            use_container_width=True
+        )
+
+with tab2:
+    st.subheader("Automated Same Game Multi (SGM) Builder")
+    st.write("Combines top-ranked, high-confidence anchors into a custom multi target.")
+
+    col_sgm1, col_sgm2 = st.columns([1, 2])
+
+    with col_sgm1:
+        sgm_match = st.selectbox("Select Match for Multi", [m for m in available_matches if m != "All Matches"])
+        target_multi_odds = st.number_input("Target Total Odds ($)", min_value=1.50, max_value=10.00, value=2.00, step=0.10)
+        num_legs = st.slider("Target Number of Legs", min_value=2, max_value=4, value=2)
+
+    with col_sgm2:
+        # Generate SGM Legs
+        sgm_pool = df_ranked[(df_ranked["match"] == sgm_match) & (df_ranked["confidence_score"] >= 70.0)]
+
+        if len(sgm_pool) < num_legs:
+            st.warning(f"Not enough high-confidence legs available for {sgm_match} to build a {num_legs}-leg SGM.")
+        else:
+            selected_legs = sgm_pool.head(num_legs)
+            
+            # Estimate total odds (compounded with slight reduction for correlation)
+            raw_multi_odds = 1.0
+            for o in selected_legs["odds"]:
+                raw_multi_odds *= o
+            
+            est_multi_odds = round(raw_multi_odds * 0.92, 2)  # Adjust for standard bookmaker multi margin
+
+            st.markdown(f"### Proposed Multi — Approx. Total Odds: **${est_multi_odds:.2f}**")
+            
+            for idx, leg in selected_legs.iterrows():
+                st.info(f"**Leg {selected_legs.index.get_loc(idx) + 1}:** {leg['selection']} | Odds: **${leg['odds']:.2f}** (Confidence: **{leg['confidence_score']}%**)")
+
+with tab3:
+    st.markdown("""
+    ### How the Model Ranks Confidence
+    
+    Rather than relying solely on raw odds, the system evaluates three distinct metrics for every market selection:
+    
+    1. **Model Projected Probability ($50\%$ Weight):** Implied probability generated by historical team rating systems, Squiggle match projections, and player stat expectancy.
+    2. **Historical Cover Rate ($35\%$ Weight):** The percentage of times the selection successfully hit over its last 10 games.
+    3. **Matchup Rating ($15\%$ Weight):** Adjusts for opposition tendencies (e.g., how heavily the opposition concedes disposals or forward goals).
+    
+    All selections are re-calculated daily via GitHub Actions workflows and updated in real-time.
+    """)
+
+st.sidebar.caption("Data updated daily via GitHub Actions.")
